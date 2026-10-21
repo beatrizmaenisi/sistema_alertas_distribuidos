@@ -1,0 +1,5 @@
+﻿Cenário;Tipo;Linhas brutas;Estações brutas;Estações excluídas;Estações usadas;Linhas após filtro;Intervalo típico (min);Buracos;Buracos (%)
+RJ_02;crise;20244;21;0;21;20244;50,0;840;4,15
+RJ_07;controle;17052;25;3;22;16770;60,0;46;0,27
+BA_02;crise;27230;37;1;36;26885;60,0;27;0,1
+BA_10;controle;26750;37;5;32;25278;60,0;105;0,42

@@ -25,9 +25,18 @@ func (l Leitura) Chave() string {
 }
 
 // MesclarLeitura resolve duas leituras com a mesma chave (só acontece se um
-// sensor reenviar com outro valor): fica o maior valor, para ser determinístico.
+// sensor reenviar com outro conteúdo): fica o maior valor e, no empate, a de
+// maior JSON, para o resultado não depender da ordem.
 func MesclarLeitura(a, b Leitura) Leitura {
-	if b.ChuvaMMh > a.ChuvaMMh {
+	if a.ChuvaMMh != b.ChuvaMMh {
+		if b.ChuvaMMh > a.ChuvaMMh {
+			return b
+		}
+		return a
+	}
+	ja, _ := json.Marshal(a)
+	jb, _ := json.Marshal(b)
+	if string(jb) > string(ja) {
 		return b
 	}
 	return a

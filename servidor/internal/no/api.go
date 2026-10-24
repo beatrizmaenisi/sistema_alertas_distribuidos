@@ -84,7 +84,7 @@ func (n *No) handleRelato(w http.ResponseWriter, r *http.Request) {
 		Momento:     e.TimestampEvento,
 	})
 	if errors.Is(err, ErrRelatoInvalido) {
-		erro(w, http.StatusBadRequest, "relato inválido: confira tipo e geolocalizacao")
+		erro(w, http.StatusBadRequest, "relato inválido: confira tipo, geolocalizacao e timestamp_evento")
 		return
 	}
 	responder(w, http.StatusCreated, v)

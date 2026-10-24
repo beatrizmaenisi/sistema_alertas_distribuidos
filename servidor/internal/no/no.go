@@ -139,9 +139,18 @@ func (n *No) disparar() {
 
 var ErrRelatoInvalido = errors.New("relato inválido")
 
+// ToleranciaRelogio é quanto um relato ou leitura pode vir "do futuro", para
+// absorver relógios de celulares e sensores um pouco adiantados.
+const ToleranciaRelogio = 5 * time.Minute
+
+// coordenadaValida é escrita com >= e <= para recusar NaN, que falha em
+// qualquer comparação (o formulário do painel aceita "NaN" via ParseFloat).
+func coordenadaValida(lat, lng float64) bool {
+	return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+}
+
 func (n *No) AdicionarRelato(r alerta.Relato) (VisaoAlerta, error) {
-	if r.Dispositivo == "" || TiposRelato[r.Tipo] == "" ||
-		r.Lat < -90 || r.Lat > 90 || r.Lng < -180 || r.Lng > 180 {
+	if r.Dispositivo == "" || TiposRelato[r.Tipo] == "" || !coordenadaValida(r.Lat, r.Lng) {
 		return VisaoAlerta{}, ErrRelatoInvalido
 	}
 	if r.TipoAutor == "" {
@@ -150,12 +159,20 @@ func (n *No) AdicionarRelato(r alerta.Relato) (VisaoAlerta, error) {
 	if r.Momento.IsZero() {
 		r.Momento = time.Now()
 	}
+	if r.Momento.After(time.Now().Add(ToleranciaRelogio)) {
+		return VisaoAlerta{}, ErrRelatoInvalido
+	}
 	r.NoOrigem = n.cfg.ID
 
 	novo := alerta.Novo(r)
 	n.mu.Lock()
 	n.mesclarAlerta(novo)
-	v := n.visao(n.alertas[novo.ID], n.listaRelatos(), n.listaLeituras(), time.Now())
+	a, ok := n.alertas[novo.ID]
+	if !ok { // velho demais, descartado pela retenção
+		n.mu.Unlock()
+		return VisaoAlerta{}, ErrRelatoInvalido
+	}
+	v := n.visao(a, n.listaRelatos(), n.listaLeituras(), time.Now())
 	n.mu.Unlock()
 
 	n.registrar(false, "Relato de %s recebido de um usuário (%s…). Credibilidade do alerta agora: %.0f%% (%s). [alerta %s]",
@@ -165,11 +182,15 @@ func (n *No) AdicionarRelato(r alerta.Relato) (VisaoAlerta, error) {
 }
 
 func (n *No) AdicionarLeitura(l alerta.Leitura) error {
-	if l.Sensor == "" || l.ChuvaMMh < 0 || l.Lat < -90 || l.Lat > 90 || l.Lng < -180 || l.Lng > 180 {
+	if l.Sensor == "" || !(l.ChuvaMMh >= 0) || math.IsInf(l.ChuvaMMh, 1) || !coordenadaValida(l.Lat, l.Lng) {
 		return errors.New("leitura inválida")
 	}
+	agora := time.Now()
 	if l.Momento.IsZero() {
-		l.Momento = time.Now()
+		l.Momento = agora
+	}
+	if l.Momento.After(agora.Add(ToleranciaRelogio)) || l.Momento.Before(agora.Add(-n.cfg.Retencao)) {
+		return errors.New("leitura fora da janela de tempo aceita: confira o relógio do sensor ou omita datahora")
 	}
 	l.Momento = l.Momento.UTC()
 

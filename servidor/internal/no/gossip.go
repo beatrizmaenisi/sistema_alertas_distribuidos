@@ -100,7 +100,9 @@ func (n *No) aplicar(p Pacote) (alertas, leituras int) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	for _, a := range p.Alertas {
-		if a != nil && n.mesclarAlerta(a) {
+		// status fora do reticulado não tem ordem definida no merge e deixaria
+		// os nós com versões diferentes para sempre
+		if a != nil && alerta.StatusValido(a.Status) && n.mesclarAlerta(a) {
 			alertas++
 		}
 	}

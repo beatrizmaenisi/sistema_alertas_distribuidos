@@ -230,7 +230,11 @@ func (n *No) MudarStatus(id string, s alerta.Status) error {
 	n.mu.Lock()
 	a, ok := n.alertas[id]
 	if ok {
-		a.Mesclar(&alerta.Alerta{ID: id, Status: s})
+		mudanca := &alerta.Alerta{ID: id, Status: s}
+		if s == alerta.Resolvido {
+			mudanca.ResolvidoEm = time.Now().UTC()
+		}
+		a.Mesclar(mudanca)
 	}
 	n.mu.Unlock()
 	if !ok {
@@ -314,6 +318,7 @@ type VisaoAlerta struct {
 	Lat         float64            `json:"lat"`
 	Lng         float64            `json:"lng"`
 	Status      alerta.Status      `json:"status"`
+	Reaberto    bool               `json:"reaberto"`
 	Nivel       string             `json:"nivel"`
 	Score       float64            `json:"score_credibilidade"`
 	Versao      string             `json:"versao_modelo"`
@@ -338,7 +343,7 @@ func (n *No) visao(a *alerta.Alerta, vizinhos []alerta.Relato, leituras []alerta
 	lat, lng := a.Centro()
 	v := VisaoAlerta{
 		ID: a.ID, Tipo: a.TipoPredominante(), Lat: lat, Lng: lng,
-		Status: a.StatusEm(agora), Nivel: av.Nivel, Score: av.Score, Versao: av.Versao,
+		Status: a.StatusEm(agora), Reaberto: a.Reaberto(), Nivel: av.Nivel, Score: av.Score, Versao: av.Versao,
 		Features: av.Features, Criado: a.Primeiro(), Atualizado: a.Ultimo(), Expira: a.Expira(),
 		Hash: a.Hash(), Sensores: []string{}, NosOrigem: []string{}, Comentarios: []string{},
 		NUsuarios: int(math.Round(math.Expm1(av.Features[credibilidade.FeatLogNUsuarios]))),

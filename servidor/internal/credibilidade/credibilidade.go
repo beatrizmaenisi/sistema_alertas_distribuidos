@@ -128,7 +128,11 @@ func Extrair(a *alerta.Alerta, vizinhos []alerta.Relato, leituras []alerta.Leitu
 	vig := a.Vigentes()
 	lat, lng := a.Centro()
 	// janela de corroboração: uma hora antes do primeiro relato até o fim da validade
+	// (num alerta reaberto, nada de antes da reabertura conta)
 	ini := a.Primeiro().Add(-time.Hour)
+	if f := a.InicioFase(); ini.Before(f) {
+		ini = f
+	}
 	fim := a.Expira()
 
 	usuarios := map[string]bool{}

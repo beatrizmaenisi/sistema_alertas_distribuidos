@@ -260,6 +260,9 @@ func situacao(a VisaoAlerta) string {
 	case alerta.Reconhecido:
 		return "Reconhecido pelas autoridades. " + orientacoes[a.Nivel]
 	}
+	if a.Reaberto {
+		return "Reaberto: houve relatos novos depois de ter sido resolvido. " + orientacoes[a.Nivel]
+	}
 	return orientacoes[a.Nivel]
 }
 

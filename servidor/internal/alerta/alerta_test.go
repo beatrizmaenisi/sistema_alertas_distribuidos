@@ -44,6 +44,11 @@ func TestMesclarComutativoAssociativoIdempotente(t *testing.T) {
 			alertaCom(relatosAleatorios(rng, 4), status[rng.Intn(3)]),
 			alertaCom(relatosAleatorios(rng, 4), status[rng.Intn(3)]),
 		}
+		for _, p := range partes {
+			if p.Status == Resolvido {
+				p.ResolvidoEm = time.Date(2022, 2, 15, 18, rng.Intn(120), 0, 0, time.UTC)
+			}
+		}
 		ordens := [][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}}
 		var esperado string
 		for _, ordem := range ordens {
@@ -160,5 +165,38 @@ func TestTipoPredominanteEmpateDeterministico(t *testing.T) {
 		if tp := a.TipoPredominante(); tp != "ALAGAMENTO" {
 			t.Fatalf("empate deveria escolher em ordem alfabética, veio %s", tp)
 		}
+	}
+}
+
+func TestReaberturaDepoisDaCarencia(t *testing.T) {
+	t0 := time.Date(2022, 2, 15, 12, 0, 0, 0, time.UTC)
+	resolvido := t0.Add(time.Hour)
+	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5051, Lng: -43.1751, Momento: t0})
+	a.Mesclar(&Alerta{ID: a.ID, Status: Resolvido, ResolvidoEm: resolvido})
+
+	// atrasado, dentro da carência: continua resolvido
+	a.Mesclar(Novo(Relato{Dispositivo: "d2", Tipo: "ALAGAMENTO", Lat: -22.5051, Lng: -43.1751, Momento: resolvido.Add(Carencia - time.Minute)}))
+	if a.Reaberto() || a.StatusEm(resolvido.Add(time.Hour)) != Resolvido {
+		t.Fatal("relato dentro da carência não deveria reabrir")
+	}
+
+	// depois da carência: nova ocorrência, só com os relatos novos
+	novo := resolvido.Add(Carencia + time.Minute)
+	a.Mesclar(Novo(Relato{Dispositivo: "d3", Tipo: "DESLIZAMENTO", Lat: -22.5059, Lng: -43.1759, Momento: novo}))
+	if !a.Reaberto() || a.StatusEm(novo) != Ativo {
+		t.Fatalf("relato depois da carência deveria reabrir, veio %s", a.StatusEm(novo))
+	}
+	if vs := a.Vigentes(); len(vs) != 1 || vs[0].Dispositivo != "d3" || a.TipoPredominante() != "DESLIZAMENTO" {
+		t.Fatalf("só o relato novo deveria valer, veio %+v", vs)
+	}
+	if s := a.StatusEm(novo.Add(Validade + time.Minute)); s != Expirado {
+		t.Fatalf("reaberto deveria expirar como um alerta comum, veio %s", s)
+	}
+
+	// resolver de novo fecha outra vez, mesmo mesclando a resolução antiga depois
+	a.Mesclar(&Alerta{ID: a.ID, Status: Resolvido, ResolvidoEm: novo.Add(time.Hour)})
+	a.Mesclar(&Alerta{ID: a.ID, Status: Resolvido, ResolvidoEm: resolvido})
+	if a.Reaberto() || a.StatusEm(novo.Add(2*time.Hour)) != Resolvido {
+		t.Fatal("a resolução mais recente deveria valer")
 	}
 }

@@ -166,3 +166,29 @@ func TestViradaDoDiaAindaCorrobora(t *testing.T) {
 		t.Fatalf("esperava 2 usuários depois da meia-noite, feature = %.3f", f)
 	}
 }
+
+// Num alerta reaberto, os relatos e a chuva da ocorrência resolvida não
+// contam: um relato novo isolado volta a ser informativo.
+func TestReabertoRecomecaDoZero(t *testing.T) {
+	m := Padrao()
+	a := alertaComUsuarios(5)
+	chuvaAntiga := alerta.Leitura{Sensor: "s1", Lat: -22.51, Lng: -43.18, ChuvaMMh: 40, Momento: t0}
+	if av := m.Avaliar(a, nil, []alerta.Leitura{chuvaAntiga}); av.Nivel != "EMERGENCIA" {
+		t.Fatalf("o teste precisa começar em emergência, veio %+v", av)
+	}
+
+	resolvido := t0.Add(time.Hour)
+	a.Mesclar(&alerta.Alerta{ID: a.ID, Status: alerta.Resolvido, ResolvidoEm: resolvido})
+	novo := alerta.Relato{Dispositivo: "outro", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO",
+		Lat: -22.505, Lng: -43.175, Momento: resolvido.Add(alerta.Carencia + 10*time.Minute)}
+	a.Mesclar(alerta.Novo(novo))
+
+	var todos []alerta.Relato
+	for _, r := range a.Relatos {
+		todos = append(todos, r)
+	}
+	av := m.Avaliar(a, todos, []alerta.Leitura{chuvaAntiga})
+	if av.Features[FeatLogNUsuarios] != math.Log1p(1) || av.Features[FeatChuvaMax] != 0 || av.Nivel != "INFO" {
+		t.Fatalf("reaberto deveria contar só o relato novo, veio %+v", av)
+	}
+}

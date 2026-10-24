@@ -23,6 +23,10 @@ const (
 	TamanhoCelula = 0.01
 	// Validade é por quanto tempo um alerta continua ativo depois do último relato.
 	Validade = 6 * time.Hour
+	// Carencia é por quanto tempo, depois de resolvido, relatos novos ainda
+	// são tratados como atrasados da mesma ocorrência. Um relato depois disso
+	// reabre o alerta, que recomeça a credibilidade do zero.
+	Carencia = 30 * time.Minute
 )
 
 // fusoReferencia define o "dia" que compõe a chave do alerta (horário de Brasília).
@@ -37,7 +41,8 @@ const (
 
 // Status forma um reticulado: ATIVO < RECONHECIDO < RESOLVIDO. O merge fica
 // com o maior, então um alerta resolvido em qualquer nó fica resolvido em
-// todos. EXPIRADO não é armazenado, é derivado da validade.
+// todos. EXPIRADO não é armazenado, é derivado da validade, e a reabertura é
+// derivada de ResolvidoEm (ver Reaberto).
 type Status string
 
 const (
@@ -73,6 +78,8 @@ type Alerta struct {
 	ID      string            `json:"id_alerta"`
 	Relatos map[string]Relato `json:"relatos"`
 	Status  Status            `json:"status"`
+	// ResolvidoEm é o momento da resolução mais recente; o merge fica com o maior.
+	ResolvidoEm time.Time `json:"resolvido_em,omitzero"`
 }
 
 // ChaveDe calcula o ID do alerta a partir do local e do momento do relato.
@@ -93,7 +100,8 @@ func Novo(r Relato) *Alerta {
 	}
 }
 
-// Mesclar incorpora o estado de b em a: união dos relatos e maior status.
+// Mesclar incorpora o estado de b em a: união dos relatos, maior status e
+// resolução mais recente.
 // Se o mesmo dispositivo aparece nos dois lados, fica o relato mais antigo.
 func (a *Alerta) Mesclar(b *Alerta) {
 	if a.ID != b.ID {
@@ -111,6 +119,9 @@ func (a *Alerta) Mesclar(b *Alerta) {
 	if ordemStatus[b.Status] > ordemStatus[a.Status] {
 		a.Status = b.Status
 	}
+	if b.ResolvidoEm.After(a.ResolvidoEm) {
+		a.ResolvidoEm = b.ResolvidoEm.UTC()
+	}
 }
 
 // relatoAntes é uma ordem total entre relatos, para o merge ser determinístico.
@@ -124,7 +135,7 @@ func relatoAntes(x, y Relato) bool {
 }
 
 func (a *Alerta) Copia() *Alerta {
-	c := &Alerta{ID: a.ID, Status: a.Status, Relatos: make(map[string]Relato, len(a.Relatos))}
+	c := &Alerta{ID: a.ID, Status: a.Status, ResolvidoEm: a.ResolvidoEm, Relatos: make(map[string]Relato, len(a.Relatos))}
 	for k, r := range a.Relatos {
 		c.Relatos[k] = r
 	}
@@ -140,12 +151,13 @@ func (a *Alerta) Hash() string {
 }
 
 // Vigentes retorna os relatos dentro da validade contada a partir do mais
-// recente, ordenados por momento.
+// recente e, se o alerta foi reaberto, posteriores à carência, ordenados por
+// momento.
 func (a *Alerta) Vigentes() []Relato {
-	ultimo := a.Ultimo()
+	ultimo, inicio := a.Ultimo(), a.InicioFase()
 	var rs []Relato
 	for _, r := range a.Relatos {
-		if r.Momento.After(ultimo.Add(-Validade)) {
+		if r.Momento.After(ultimo.Add(-Validade)) && r.Momento.After(inicio) {
 			rs = append(rs, r)
 		}
 	}
@@ -178,11 +190,32 @@ func (a *Alerta) Primeiro() time.Time {
 
 func (a *Alerta) Expira() time.Time { return a.Ultimo().Add(Validade) }
 
+// Reaberto diz se o alerta foi resolvido e depois recebeu um relato além da
+// carência, ou seja, se é uma nova ocorrência no mesmo lugar e dia. Só
+// depende do estado replicado, então todos os nós concordam.
+func (a *Alerta) Reaberto() bool {
+	return a.Status == Resolvido && !a.ResolvidoEm.IsZero() && a.Ultimo().After(a.ResolvidoEm.Add(Carencia))
+}
+
+// InicioFase é a partir de quando os relatos valem: o fim da carência, se o
+// alerta foi reaberto, ou o tempo zero. Os relatos de antes descrevem a
+// ocorrência já resolvida.
+func (a *Alerta) InicioFase() time.Time {
+	if a.Reaberto() {
+		return a.ResolvidoEm.Add(Carencia)
+	}
+	return time.Time{}
+}
+
 func (a *Alerta) StatusEm(agora time.Time) Status {
-	if a.Status != Resolvido && agora.After(a.Expira()) {
+	s := a.Status
+	if a.Reaberto() {
+		s = Ativo
+	}
+	if s != Resolvido && agora.After(a.Expira()) {
 		return Expirado
 	}
-	return a.Status
+	return s
 }
 
 // Centro é a média das posições dos relatos vigentes.

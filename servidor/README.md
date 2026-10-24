@@ -69,6 +69,7 @@ treino/           exportação do modelo do scikit-learn para JSON
   o mesmo dispositivo conta uma vez só.
 - **Leituras**: conjunto indexado por (sensor, datahora). Merge = união.
 - **Status**: ATIVO < RECONHECIDO < RESOLVIDO. Merge = maior. EXPIRADO é derivado (6 h sem relato novo).
+- **Reabertura**: resolver guarda `resolvido_em` (merge = mais recente). Relatos até 30 min depois (carência) são atrasados da mesma ocorrência; um relato depois disso reabre o alerta (derivado, volta a ATIVO) e a credibilidade recomeça só com os relatos e leituras posteriores à carência. Resolver de novo fecha outra vez.
 - **Score, nível, centro e expiração não trafegam**: cada nó calcula a partir do estado.
   Nós com o mesmo estado calculam o mesmo score.
 

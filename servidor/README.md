@@ -68,7 +68,7 @@ treino/           exportação do modelo do scikit-learn para JSON; celula.py ag
   alerta sem coordenação. Hexágonos têm os 6 vizinhos à mesma distância e só 3 se encontram num
   vértice (contra 4 quadrados); o índice H3 é igual em Go e em Python (`treino/celula.py`).
 - **Relatos**: conjunto indexado pelo hash SHA-256 do dispositivo (LGPD). Merge = união;
-  o mesmo dispositivo conta uma vez só.
+  o mesmo dispositivo conta uma vez só e, se relatar de novo, vale o relato mais recente.
 - **Leituras**: conjunto indexado por (sensor, datahora). Merge = união.
 - **Status**: ATIVO < RECONHECIDO < RESOLVIDO. Merge = maior. EXPIRADO é derivado (6 h sem relato novo).
 - **Reabertura**: resolver guarda `resolvido_em` (merge = mais recente). Relatos até 30 min depois (carência) são atrasados da mesma ocorrência; um relato depois disso reabre o alerta (derivado, volta a ATIVO) e a credibilidade recomeça só com os relatos e leituras posteriores à carência. Resolver de novo fecha outra vez.

@@ -139,7 +139,8 @@ func Novo(r Relato) *Alerta {
 
 // Mesclar incorpora o estado de b em a: união dos relatos, maior status e
 // resolução mais recente.
-// Se o mesmo dispositivo aparece nos dois lados, fica o relato mais antigo.
+// Se o mesmo dispositivo aparece nos dois lados, fica o relato mais recente:
+// quem corrige o tipo ou relata de novo substitui o relato anterior.
 func (a *Alerta) Mesclar(b *Alerta) {
 	if a.ID != b.ID {
 		return
@@ -149,7 +150,7 @@ func (a *Alerta) Mesclar(b *Alerta) {
 	}
 	for k, rb := range b.Relatos {
 		rb.Momento = rb.Momento.UTC()
-		if ra, ok := a.Relatos[k]; !ok || relatoAntes(rb, ra) {
+		if ra, ok := a.Relatos[k]; !ok || relatoAntes(ra, rb) {
 			a.Relatos[k] = rb
 		}
 	}

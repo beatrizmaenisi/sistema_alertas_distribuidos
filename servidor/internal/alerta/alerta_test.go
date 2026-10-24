@@ -69,8 +69,23 @@ func TestMesmoDispositivoContaUmaVez(t *testing.T) {
 	t0 := time.Date(2022, 2, 15, 18, 0, 0, 0, time.UTC)
 	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0})
 	a.Mesclar(Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0.Add(time.Minute)}))
-	if len(a.Relatos) != 1 || !a.Relatos["d1"].Momento.Equal(t0) {
-		t.Fatalf("esperava 1 relato com o momento mais antigo, veio %+v", a.Relatos)
+	if len(a.Relatos) != 1 || !a.Relatos["d1"].Momento.Equal(t0.Add(time.Minute)) {
+		t.Fatalf("esperava 1 relato com o momento mais recente, veio %+v", a.Relatos)
+	}
+}
+
+func TestMesmoDispositivoPodeCorrigirOTipo(t *testing.T) {
+	t0 := time.Date(2022, 2, 15, 18, 0, 0, 0, time.UTC)
+	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0})
+	a.Mesclar(Novo(Relato{Dispositivo: "d1", Tipo: "DESLIZAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0.Add(time.Minute)}))
+	if a.Relatos["d1"].Tipo != "DESLIZAMENTO" {
+		t.Fatalf("esperava o tipo corrigido, veio %+v", a.Relatos)
+	}
+	// A ordem do merge não pode mudar o resultado.
+	b := Novo(Relato{Dispositivo: "d1", Tipo: "DESLIZAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0.Add(time.Minute)})
+	b.Mesclar(Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0}))
+	if a.Hash() != b.Hash() {
+		t.Fatalf("merge em ordens diferentes divergiu: %s != %s", a.Hash(), b.Hash())
 	}
 }
 

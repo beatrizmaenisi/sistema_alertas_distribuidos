@@ -325,6 +325,7 @@ type VisaoAlerta struct {
 	Versao      string             `json:"versao_modelo"`
 	Features    map[string]float64 `json:"features"`
 	NUsuarios   int                `json:"n_usuarios"` // usuários distintos até 1 km, como o modelo conta
+	Tipos       map[string]int     `json:"tipos"`      // pessoas que relataram cada tipo (só moradores)
 	Sensores    []string           `json:"sensores"`
 	NosOrigem   []string           `json:"nos_origem"`
 	Comentarios []string           `json:"comentarios"`
@@ -346,13 +347,16 @@ func (n *No) visao(a *alerta.Alerta, vizinhos []alerta.Relato, leituras []alerta
 		ID: a.ID, Tipo: a.TipoPredominante(), Lat: lat, Lng: lng, Contorno: a.Contorno(),
 		Status: a.StatusEm(agora), Reaberto: a.Reaberto(), Nivel: av.Nivel, Score: av.Score, Versao: av.Versao,
 		Features: av.Features, Criado: a.Primeiro(), Atualizado: a.Ultimo(), Expira: a.Expira(),
-		Hash: a.Hash(), Sensores: []string{}, NosOrigem: []string{}, Comentarios: []string{},
+		Hash: a.Hash(), Tipos: map[string]int{}, Sensores: []string{}, NosOrigem: []string{}, Comentarios: []string{},
 		NUsuarios: int(math.Round(math.Expm1(av.Features[credibilidade.FeatLogNUsuarios]))),
 	}
 	nos := map[string]bool{}
 	for _, r := range a.Vigentes() {
 		if r.TipoAutor == alerta.Sensor {
 			v.Sensores = append(v.Sensores, r.Dispositivo)
+		}
+		if r.TipoAutor == alerta.Usuario {
+			v.Tipos[r.Tipo]++
 		}
 		if r.Comentario != "" {
 			v.Comentarios = append(v.Comentarios, r.Comentario)

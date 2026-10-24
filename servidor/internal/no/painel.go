@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -39,6 +40,8 @@ var fusoPainel = time.FixedZone("BRT", -3*60*60)
 
 var nomesNivelPainel = map[string]string{"INFO": "Informativo", "ATENCAO": "Atenção", "EMERGENCIA": "Emergência"}
 
+var ordemNivelPainel = map[string]int{"INFO": 0, "ATENCAO": 1, "EMERGENCIA": 2}
+
 var orientacoes = map[string]string{
 	"INFO":       "Poucos indícios até agora. Fique atento.",
 	"ATENCAO":    "Indícios consistentes. Evite a área se puder.",
@@ -56,12 +59,16 @@ var modelosPainel = template.Must(template.New("").Funcs(template.FuncMap{
 	"nivel":       func(n string) string { return nomesNivelPainel[n] },
 	"tipo":        nomeTipo,
 	"situacao":    situacao,
+	"mistura":     mistura,
+	"titulos":     titulos,
 	"motivos":     motivos,
 	"unicos":      unicos,
 	"juntar":      strings.Join,
 	"caminho":     url.PathEscape,
 	"json":        func(v any) (string, error) { b, err := json.Marshal(v); return string(b), err },
 	"area":        areaMapa,
+	"add1":        func(n int) int { return n + 1 },
+	"cartao":      func(a VisaoAlerta, agora time.Time) cartaoAlerta { return cartaoAlerta{a, agora} },
 }).ParseFS(arquivosWeb, "web/index.html"))
 
 // areaMapa é o hexágono pai, na resolução res, de onde o mapa junta o
@@ -74,6 +81,13 @@ type area struct {
 func areaMapa(id string, res int) area {
 	c, vs := alerta.CelulaPai(id, res)
 	return area{c, vs}
+}
+
+// cartaoAlerta leva o instante da renderização junto com o alerta, para o
+// template do cartão calcular "há quanto tempo" sem acessar o painel todo.
+type cartaoAlerta struct {
+	VisaoAlerta
+	Agora time.Time
 }
 
 type linhaEvento struct {
@@ -89,9 +103,11 @@ type painel struct {
 	No, Modelo, Hash string
 	Inicio           time.Time
 	Peers            []visaoPeer
+	NPeersOnline     int
 
-	Alertas     []VisaoAlerta // ativos primeiro
+	Alertas     []VisaoAlerta // ativos primeiro, do mais grave para o mais leve; depois os encerrados
 	NAtivos     int
+	NInativos   int
 	NEmergencia int
 
 	Estacoes  []VisaoEstacao
@@ -110,6 +126,12 @@ func (n *No) montarPainel() *painel {
 		Hash: n.HashEstado(), Peers: n.listaPeers(), Estacoes: n.Estacoes(),
 	}
 
+	for _, pr := range p.Peers {
+		if pr.Online {
+			p.NPeersOnline++
+		}
+	}
+
 	var inativos []VisaoAlerta
 	for _, a := range n.Alertas(agora) {
 		if !a.Ativo() {
@@ -122,6 +144,12 @@ func (n *No) montarPainel() *painel {
 			p.NEmergencia++
 		}
 	}
+	maisRecente := func(a, b VisaoAlerta) int { return b.Atualizado.Compare(a.Atualizado) }
+	slices.SortStableFunc(p.Alertas, func(a, b VisaoAlerta) int {
+		return cmp.Or(cmp.Compare(ordemNivelPainel[b.Nivel], ordemNivelPainel[a.Nivel]), maisRecente(a, b))
+	})
+	slices.SortStableFunc(inativos, maisRecente)
+	p.NInativos = len(inativos)
 	p.Alertas = append(p.Alertas, inativos...)
 
 	for _, e := range p.Estacoes {
@@ -320,4 +348,41 @@ func unicos(ss []string) []string {
 		}
 	}
 	return out
+}
+
+// tiposOrdenados são os tipos relatados por moradores, do mais para o menos
+// relatado (empate: ordem alfabética).
+func tiposOrdenados(a VisaoAlerta) []string {
+	ts := slices.Collect(maps.Keys(a.Tipos))
+	slices.SortFunc(ts, func(x, y string) int { return cmp.Or(cmp.Compare(a.Tipos[y], a.Tipos[x]), cmp.Compare(x, y)) })
+	return ts
+}
+
+// titulos é o título do alerta: todos os tipos relatados ("Alagamento + Deslizamento"),
+// para que uma área com ocorrências diferentes mostre as duas. Sem relatos de
+// moradores (alerta aberto só por pluviômetro), vale o tipo predominante.
+func titulos(a VisaoAlerta) string {
+	ts := tiposOrdenados(a)
+	if len(ts) == 0 {
+		return nomeTipo(a.Tipo)
+	}
+	nomes := make([]string, len(ts))
+	for i, t := range ts {
+		nomes[i] = nomeTipo(t)
+	}
+	return strings.Join(nomes, " + ")
+}
+
+// mistura lista quantas pessoas relataram cada tipo. Fica vazia quando só um
+// tipo foi relatado: aí o título já diz tudo.
+func mistura(a VisaoAlerta) string {
+	if len(a.Tipos) < 2 {
+		return ""
+	}
+	ts := tiposOrdenados(a)
+	partes := make([]string, len(ts))
+	for i, t := range ts {
+		partes[i] = fmt.Sprintf("%s: %d", TiposRelato[t], a.Tipos[t])
+	}
+	return strings.Join(partes, " · ")
 }

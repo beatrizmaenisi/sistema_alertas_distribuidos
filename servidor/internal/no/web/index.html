@@ -14,29 +14,31 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
 <style>
   :root {
     --fundo: #f5f6f8; --cartao: #fff; --texto: #1d2129; --suave: #6b7280; --borda: #d9dde3;
-    --info: #3b82f6; --atencao: #d97706; --emergencia: #dc2626; --ok: #16a34a; --sensor: #0e7490;
-    --larg-esq: 380px; --larg-dir: 340px;
+    --info: #3b82f6; --atencao: #d97706; --emergencia: #dc2626; --ok: #16a34a; --nav: 44px; --sensor: #475569;
+    
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body { margin: 0; overflow: hidden; font: 14px/1.45 system-ui, sans-serif; background: var(--fundo); color: var(--texto); }
 
-  /* As barras laterais guardam os painéis (alertas à esquerda, servidores e
-  atividade à direita); o mapa ocupa o resto da tela. Só o
-  cabeçalho e a barra de relato ficam flutuando sobre o mapa. A camada deles
-  não recebe cliques, só os próprios widgets, então arrastar e clicar nos
-  espaços vazios continua chegando ao mapa. */
-  #mapa { position: fixed; inset: 0 var(--larg-dir) 0 var(--larg-esq); z-index: 0; }
-  .lateral { position: fixed; top: 0; bottom: 0; z-index: 1000; overflow-y: auto;
-             display: flex; flex-direction: column; gap: 12px; padding: 12px; background: var(--fundo); }
-  #lateral-esq { left: 0; width: var(--larg-esq); border-right: 1px solid var(--borda); }
-  #lateral-dir { right: 0; width: var(--larg-dir); border-left: 1px solid var(--borda); }
-  #sobre { position: fixed; inset: 0 var(--larg-dir) 0 var(--larg-esq); z-index: 1000; pointer-events: none; display: grid; gap: 12px; padding: 12px 12px 26px;
-           grid-template-columns: minmax(0, 420px) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
-           grid-template-areas: "cab ." ". ." "barra barra"; }
+  /* O mapa ocupa a tela toda e tudo o mais flutua sobre ele: o cabeçalho, a
+  barra de relato e os painéis (alertas, servidores, atividade), que o usuário
+  arrasta pelo título. As camadas não recebem cliques, só os próprios widgets,
+  então arrastar e clicar nos espaços vazios continua chegando ao mapa. */
+  #mapa { position: fixed; inset: var(--nav) 0 0 0; z-index: 0; }
+  #widgets { position: fixed; inset: var(--nav) 0 0 0; z-index: 1001; pointer-events: none; }
+  .flutuante { position: absolute; width: 330px; max-width: calc(100vw - 24px); }
+  .flutuante > summary { cursor: grab; touch-action: none; user-select: none; }
+  .flutuante.arrastando > summary { cursor: grabbing; }
+  .flutuante.arrastando { box-shadow: 0 10px 30px #00000040; }
+  .flutuante .corpo { max-height: calc(100dvh - 130px); overflow-y: auto; }
+  #w-servidores { width: 280px; }
+  #w-atividade { width: 320px; }
+  #sobre { position: fixed; inset: var(--nav) 0 0 0; z-index: 1000; pointer-events: none; display: grid; gap: 12px; padding: 12px 12px 26px;
+           grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+           grid-template-areas: ". ." "barra barra"; }
   .widget { pointer-events: auto; background: var(--cartao); border: 1px solid var(--borda); border-radius: 10px;
             box-shadow: 0 4px 18px #0000001f; }
-  .lateral .widget { box-shadow: none; }
   details.widget { flex: none; }
   details.widget > summary { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; list-style: none; }
   details.widget > summary::-webkit-details-marker { display: none; }
@@ -44,31 +46,46 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   details.widget:not([open]) > summary::after { transform: rotate(-90deg); }
   .corpo { padding: 0 12px 12px; }
 
-  .cabecalho { grid-area: cab; background: var(--texto); color: #fff; border-color: var(--texto); padding: 10px 14px; }
-  #topo { display: flex; flex-wrap: wrap; gap: 2px 16px; align-items: baseline; }
-  #topo h1 { margin: 0 0 2px; font-size: 17px; width: 100%; }
-  #topo .meta { color: #c7ccd4; font-size: 12px; cursor: help; }
+  /* Barra de navegação fixa no topo, de ponta a ponta. */
+  .cabecalho { position: fixed; top: 0; left: 0; right: 0; height: var(--nav); z-index: 1002; border: 0; border-radius: 0;
+               background: var(--texto); color: #fff; box-shadow: 0 2px 8px #0000004d;
+               display: flex; align-items: center; gap: 10px; padding: 0 12px 0 16px; }
+  #topo { display: flex; flex: 1; min-width: 0; overflow: hidden; align-items: baseline; gap: 16px; }
+  #topo h1 { margin: 0; font-size: 16px; white-space: nowrap; }
+  #topo .meta { color: #c7ccd4; font-size: 12px; cursor: help; white-space: nowrap; }
   #topo code { color: #fff; background: #ffffff22; padding: 1px 6px; border-radius: 4px; }
-  #conexao { color: #fca5a5; font-weight: 600; }
-  .intro { margin-top: 6px; font-size: 13px; color: #e5e7eb; }
-  .intro summary { cursor: pointer; font-weight: 600; color: #fff; }
-  .intro p { margin: 6px 0 0; }
+  #topo .meta b { color: #fff; }
+  #topo .meta .ponto { display: inline-block; margin-right: 4px; vertical-align: 0; }
+  #topo .meta .ponto.parcial { background: var(--atencao); }
+  #conexao { color: #fca5a5; font-weight: 600; font-size: 12px; }
+  .cabecalho button { width: 26px; height: 26px; padding: 0; border-radius: 50%; border-color: #ffffff55; background: none; color: #fff; font-weight: 700; }
+  dialog#ajuda { max-width: min(560px, 92vw); border: 1px solid var(--borda); border-radius: 10px; padding: 16px 20px; color: var(--texto); }
+  dialog#ajuda::backdrop { background: #0000005a; }
+  dialog#ajuda h2 { margin-bottom: 8px; }
+  dialog#ajuda p, dialog#ajuda li { font-size: 13px; margin: 6px 0 0; }
+  dialog#ajuda ul { padding-left: 18px; margin: 4px 0 0; }
+  dialog#ajuda form { text-align: right; margin-top: 12px; }
+  .info { color: var(--suave); cursor: help; font-size: 12px; font-weight: 400; }
 
   h2 { font-size: 15px; margin: 0; }
   h3 { font-size: 13px; margin: 4px 0 2px; }
-  .explica { color: var(--suave); font-size: 12px; margin: 0 0 8px; }
   .contagem { font-size: 11px; font-weight: 700; color: #fff; background: var(--suave); border-radius: 10px; padding: 1px 8px; }
   .contagem.EMERGENCIA { background: var(--emergencia); }
   .cartao { background: var(--cartao); border: 1px solid var(--borda); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
-  .no .topo { display: flex; justify-content: space-between; font-weight: 600; }
-  .on { color: var(--ok); font-size: 11px; font-weight: 600; }
-  .off { color: var(--emergencia); font-size: 11px; font-weight: 600; }
-  .no.offline { opacity: .6; }
+  .linha-no { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  .linha-no .quando { margin-left: auto; color: var(--suave); font-size: 12px; }
+  .ponto { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .offline .ponto { background: var(--emergencia); }
+  .offline .quando { color: var(--emergencia); }
+  #w-servidores h3 { margin: 10px 0 2px; }
+  #nos, #estacoes { padding-top: 2px; }
+  #estacoes summary { cursor: pointer; }
+  #ultimo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--suave); font-size: 12px; }
   .pequeno { color: var(--suave); font-size: 12px; }
-  .barra { grid-area: barra; justify-self: center; max-width: 720px; font-size: 13px; padding: 8px 12px; }
-  .relatar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
-  .relatar b { margin-right: 4px; }
-  .legenda { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; color: var(--suave); margin-top: 6px; }
+  .barra { grid-area: barra; justify-self: center; max-width: 900px; font-size: 13px; padding: 8px 12px; }
+  .relatar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .relatar label { color: var(--suave); font-size: 12px; cursor: help; }
+  .legenda { display: flex; gap: 2px 12px; font-size: 12px; color: var(--suave); margin-left: auto; cursor: help; }
   .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
   select, button { font: inherit; padding: 4px 8px; border: 1px solid var(--borda); border-radius: 6px; background: #fff; cursor: pointer; }
   .alerta { border-left: 4px solid var(--info); cursor: pointer; }
@@ -77,6 +94,12 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   .alerta.inativo { opacity: .55; }
   .alerta .topo { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .alerta .titulo { font-size: 15px; font-weight: 600; }
+  .alerta .orientacao { margin: 0; }
+  .alerta .mistura { margin: 2px 0 0; }
+  details.mais > summary { cursor: pointer; color: var(--suave); font-size: 12px; margin-top: 6px; }
+  details.mais .motivos { margin-top: 6px; }
+  details.mais .rodape { margin-top: 6px; }
+  details.resolvidos > summary { cursor: pointer; color: var(--suave); font-size: 13px; margin: 2px 0 8px; }
   .selo { display: inline-block; font-size: 11px; font-weight: 700; color: #fff; border-radius: 4px; padding: 1px 6px;
           margin-right: 6px; vertical-align: 1px; background: var(--info); }
   .ATENCAO .selo { background: var(--atencao); } .EMERGENCIA .selo { background: var(--emergencia); }
@@ -91,7 +114,6 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   .comentarios { font-style: italic; color: #374151; margin-bottom: 4px; }
   .rodape { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
   .tecnico { color: #9ca3af; font: 11px ui-monospace, monospace; }
-  .resumo { margin: 0 0 8px; }
   #logs { font-size: 13px; }
   #logs div { border-bottom: 1px solid #eef0f3; padding: 4px 0; }
   #logs .quando { color: var(--suave); font-size: 11px; font-variant-numeric: tabular-nums; margin-right: 6px; }
@@ -102,78 +124,85 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   @keyframes sumir { to { opacity: 0; visibility: hidden; } }
   .vazio { color: var(--suave); font-style: italic; }
   @media (max-width: 900px) {
-    :root { --alt-esq: 25dvh; --alt-dir: 20dvh; }
-    #mapa, #sobre { inset: 0 0 calc(var(--alt-esq) + var(--alt-dir)) 0; }
-    .lateral { top: auto; left: 0; right: 0; width: auto; border: 0; border-top: 1px solid var(--borda); }
-    #lateral-esq { bottom: var(--alt-dir); height: var(--alt-esq); }
-    #lateral-dir { bottom: 0; height: var(--alt-dir); }
-    #sobre { grid-template-columns: minmax(0, 1fr); grid-template-areas: "cab" "." "barra"; }
-    .leaflet-control-zoom, .legenda, .dica { display: none; }
+    :root { --alt: 30dvh; }
+    #mapa, #sobre { inset: var(--nav) 0 var(--alt) 0; }
+    #widgets { inset: auto 0 0 0; max-height: var(--alt); overflow-y: auto; pointer-events: auto; background: var(--fundo);
+               border-top: 1px solid var(--borda); display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+    .flutuante, #w-servidores, #w-atividade { position: static; width: auto; max-width: none; }
+    .flutuante > summary { cursor: pointer; touch-action: auto; }
+    #sobre { grid-template-columns: minmax(0, 1fr); grid-template-areas: "." "barra"; }
+    .leaflet-control-zoom, .legenda, .dica, #reorganizar { display: none; }
+    .cabecalho { padding: 0 8px 0 12px; }
+    #topo .extra { display: none; }
   }
+  @media (max-width: 1200px) { #topo .extra { display: none; } }
 </style>
 </head>
 <body>
-<div id="mapa"></div>
-<aside id="lateral-esq" class="lateral">
-  <details class="widget" open>
+<div id="mapa" hx-sync="queue all"></div>
+<nav class="cabecalho">
+  <header id="topo">{{template "topo" .}}</header>
+  <button type="button" id="reorganizar" title="Voltar os painéis para o lugar original" aria-label="Reorganizar painéis">⟲</button>
+  <button type="button" id="abrir-ajuda" title="Como funciona este painel?" aria-label="Como funciona este painel?">?</button>
+</nav>
+<div id="widgets">
+  <details class="widget flutuante" id="w-alertas" open>
     <summary><h2>Alertas</h2><span id="contagem">{{template "contagem" .}}</span></summary>
     <div class="corpo">
-      <p class="explica resumo" id="resumo">{{template "resumo" .}}</p>
       <div id="feed">{{template "feed" .}}</div>
     </div>
   </details>
-</aside>
-<aside id="lateral-dir" class="lateral">
-  <details class="widget" open>
-    <summary><h2>Servidores e pluviômetros</h2></summary>
+  <details class="widget flutuante" id="w-servidores" open>
+    <summary><h2>Servidores</h2><span class="info" title="Cada servidor guarda uma cópia completa dos alertas.">ⓘ</span></summary>
     <div class="corpo">
-      <p class="explica">Cada servidor guarda uma cópia completa dos alertas.</p>
       <div id="nos">{{template "nos" .}}</div>
-      <h3>Pluviômetros</h3>
-      <p class="explica">Sensores que medem a chuva, em milímetros por hora (mm/h).</p>
+      <h3>Pluviômetros <span class="info" title="Sensores que medem a chuva, em milímetros por hora (mm/h).">ⓘ</span></h3>
       <div id="estacoes" class="pequeno">{{template "estacoes" .}}</div>
     </div>
   </details>
-  <details class="widget" open>
-    <summary><h2>O que está acontecendo</h2></summary>
+  <details class="widget flutuante" id="w-atividade">
+    <summary><h2>Atividade</h2><span id="ultimo">{{template "ultimo" .}}</span></summary>
     <div class="corpo">
-      <p class="explica">Atividade deste servidor, da mais recente para a mais antiga.</p>
       <div id="logs">{{template "logs" .}}</div>
     </div>
   </details>
-</aside>
+</div>
 <div id="sobre">
-  <div class="widget cabecalho">
-    <header id="topo">{{template "topo" .}}</header>
-    <details class="intro">
-      <summary>Como funciona este painel?</summary>
-      <p>Este é um dos servidores regionais do sistema. Moradores relatam ocorrências (alagamento, deslizamento, queda de árvore)
-        e pluviômetros espalhados pela cidade enviam quanto está chovendo. O servidor junta os relatos de uma mesma área (cerca de 1 km)
-        em um <b>alerta</b> e calcula a <b>credibilidade</b> dele: quanto mais pessoas diferentes relatam e quanto mais chuva os
-        pluviômetros próximos medem, maior a confiança — assim um relato falso isolado não vira emergência.</p>
-      <p>Os servidores trocam novidades entre si a cada segundo (protocolo <i>gossip</i>), então todos mostram os mesmos alertas.
-        Se um servidor sair do ar, os outros continuam funcionando, e ele recupera tudo o que perdeu ao voltar.</p>
-    </details>
-  </div>
   <div class="widget barra">
     <div class="relatar">
-      <b>Viu alguma ocorrência?</b> <span class="dica">Escolha o tipo e clique no mapa, no local onde ela aconteceu:</span>
-      <select id="tipo">
+      <b>Relatar ocorrência</b>
+      <select id="tipo" aria-label="Tipo de ocorrência">
         <option value="ALAGAMENTO">Alagamento</option><option value="DESLIZAMENTO">Deslizamento</option>
         <option value="CHUVA_FORTE">Chuva forte</option><option value="QUEDA_ARVORE">Queda de árvore</option>
       </select>
+      <span class="dica pequeno">e clique no local no mapa</span>
       <label title="Desmarcado, todos os cliques são seus: relatar de novo não aumenta a credibilidade. Marcado, cada clique simula uma pessoa diferente, para demonstrar vários moradores relatando.">
-        <input type="checkbox" id="simular"> simulação: cada clique é uma pessoa diferente</label>
-    </div>
-    <div class="legenda">
-      <span><i style="background:var(--info)"></i>Informativo (credibilidade abaixo de 40%)</span>
-      <span><i style="background:var(--atencao)"></i>Atenção (40% a 69%)</span>
-      <span><i style="background:var(--emergencia)"></i>Emergência (70% ou mais)</span>
-      <span><i style="background:var(--sensor)"></i>Pluviômetro (mais escuro = mais chuva)</span>
-      <span>Cada hexágono é a área de um alerta; afastando o mapa, os vizinhos se juntam numa região maior</span>
+        <input type="checkbox" id="simular"> simular várias pessoas</label>
+      <span class="legenda" title="Informativo: credibilidade abaixo de 40%. Atenção: 40% a 69%. Emergência: 70% ou mais. Círculos cinza são pluviômetros (mais escuro = mais chuva). Cada hexágono é a área de um alerta; afastando o mapa, os vizinhos se juntam numa região maior.">
+        <span><i style="background:var(--info)"></i>Info</span>
+        <span><i style="background:var(--atencao)"></i>Atenção</span>
+        <span><i style="background:var(--emergencia)"></i>Emergência</span>
+        <span class="info">ⓘ</span>
+      </span>
     </div>
   </div>
 </div>
+<dialog id="ajuda">
+  <h2>Como funciona este painel?</h2>
+  <p>Este é um dos servidores regionais do sistema. Moradores relatam ocorrências (alagamento, deslizamento, queda de árvore)
+    e pluviômetros espalhados pela cidade enviam quanto está chovendo. O servidor junta os relatos de uma mesma área (cerca de 1 km)
+    em um <b>alerta</b> e calcula a <b>credibilidade</b> dele: quanto mais pessoas diferentes relatam e quanto mais chuva os
+    pluviômetros próximos medem, maior a confiança — assim um relato falso isolado não vira emergência.</p>
+  <p>Os servidores trocam novidades entre si a cada segundo (protocolo <i>gossip</i>), então todos mostram os mesmos alertas.
+    Se um servidor sair do ar, os outros continuam funcionando, e ele recupera tudo o que perdeu ao voltar.</p>
+  <ul>
+    <li><b>Cores:</b> azul = informativo (abaixo de 40%), laranja = atenção (40% a 69%), vermelho = emergência (70% ou mais).</li>
+    <li><b>Círculos cinza:</b> pluviômetros; quanto mais escuro, mais chuva.</li>
+    <li><b>Hexágonos:</b> a área de um alerta; afastando o mapa, os vizinhos se juntam numa região maior.</li>
+    <li><b>Código dos dados:</b> se for igual em todos os servidores, eles estão sincronizados.</li>
+  </ul>
+  <form method="dialog"><button>Fechar</button></form>
+</dialog>
 <div id="aviso"></div>
 <div id="dados-mapa" hidden>{{template "mapa" .}}</div>
 <div hidden hx-get="/painel" hx-trigger="every 1s" hx-swap="none"></div>
@@ -183,17 +212,71 @@ const $ = id => document.getElementById(id);
 const novoAutor = () => 'painel-' + Math.random().toString(36).slice(2);
 const autorFixo = novoAutor();
 
+const estreita = matchMedia('(max-width: 900px)');
 // Em telas estreitas os widgets começam recolhidos, para o mapa aparecer.
-if (matchMedia('(max-width: 900px)').matches) for (const d of document.querySelectorAll('details.widget')) d.open = false;
+if (estreita.matches) for (const d of document.querySelectorAll('details.widget')) d.open = false;
+
+// Painéis arrastáveis: cada um é movido pelo título, e a posição fica guardada
+// no navegador. Sem posição guardada, usa o lugar original.
+const widgets = [...document.querySelectorAll('.flutuante')], chavePos = 'painel-posicoes';
+const lerPos = () => { try { return JSON.parse(localStorage.getItem(chavePos)) || {}; } catch { return {}; } };
+const gravarPos = pos => { try { localStorage.setItem(chavePos, JSON.stringify(pos)); } catch {} };
+const limitar = (w, x, y) => {
+  const area = $('widgets'), larg = area.clientWidth, alt = area.clientHeight;
+  return [Math.max(0, Math.min(x, larg - Math.min(w.offsetWidth, larg))), Math.max(0, Math.min(y, alt - Math.min(w.offsetHeight, alt)))];
+};
+const mover = (w, x, y) => { [x, y] = limitar(w, x, y); w.style.left = x + 'px'; w.style.top = y + 'px'; return [x, y]; };
+function posicionar(guardadas) {
+  if (estreita.matches) return;
+  const alertas = $('w-alertas'), servidores = $('w-servidores'), atividade = $('w-atividade');
+  const padrao = {
+    'w-alertas': [12, 12],
+    'w-servidores': [$('widgets').clientWidth - servidores.offsetWidth - 12, 12],
+  };
+  for (const w of [alertas, servidores]) mover(w, ...(guardadas[w.id] ?? padrao[w.id]));
+  mover(atividade, ...(guardadas['w-atividade'] ?? [$('widgets').clientWidth - atividade.offsetWidth - 12, servidores.offsetTop + servidores.offsetHeight + 12]));
+}
+posicionar(lerPos());
+addEventListener('resize', () => posicionar(lerPos()));
+let camada = 1001;
+for (const w of widgets) {
+  const titulo = w.querySelector('summary');
+  w.addEventListener('pointerdown', () => { w.style.zIndex = ++camada; });
+  // Abrir ou fechar muda a altura: puxa o painel de volta para dentro da tela.
+  w.addEventListener('toggle', () => { if (!estreita.matches) mover(w, w.offsetLeft, w.offsetTop); });
+  titulo.addEventListener('pointerdown', e => {
+    if (estreita.matches || e.button !== 0) return;
+    const x0 = e.clientX, y0 = e.clientY, l0 = w.offsetLeft, t0 = w.offsetTop;
+    let arrastou = false;
+    titulo.setPointerCapture(e.pointerId);
+    const move = ev => {
+      if (!arrastou && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+      arrastou = true; w.classList.add('arrastando');
+      mover(w, l0 + ev.clientX - x0, t0 + ev.clientY - y0);
+    };
+    const fim = () => {
+      titulo.removeEventListener('pointermove', move); titulo.removeEventListener('pointerup', fim); titulo.removeEventListener('pointercancel', fim);
+      w.classList.remove('arrastando');
+      if (!arrastou) return;
+      // Soltar depois de arrastar não pode abrir ou fechar o painel.
+      titulo.addEventListener('click', ev => ev.preventDefault(), { once: true, capture: true });
+      gravarPos({ ...lerPos(), [w.id]: [w.offsetLeft, w.offsetTop] });
+    };
+    titulo.addEventListener('pointermove', move); titulo.addEventListener('pointerup', fim); titulo.addEventListener('pointercancel', fim);
+  });
+}
+$('reorganizar').addEventListener('click', () => { gravarPos({}); posicionar({}); });
+
 
 let mapa = null;
 const marcAlertas = {}, marcEstacoes = {};
 if (window.L) {
-  mapa = L.map('mapa', { zoomControl: false }).setView([-22.51, -43.18], 12); // Petrópolis
-  L.control.zoom({ position: 'topright' }).addTo(mapa);
-  // Popups abrem fora das áreas cobertas pelo cabeçalho e pela barra de relato.
-  L.Popup.prototype.options.autoPanPaddingTopLeft = L.point(20, 140);
-  L.Popup.prototype.options.autoPanPaddingBottomRight = L.point(60, 120);
+  // Sem zoom por duplo clique: cliques seguidos são relatos, não zoom.
+  mapa = L.map('mapa', { zoomControl: false, doubleClickZoom: false }).setView([-22.51, -43.18], 12); // Petrópolis
+  L.control.zoom({ position: 'bottomright' }).addTo(mapa);
+  // Os popups abrem fora do cabeçalho e da barra de relato.
+  L.Popup.prototype.options.autoPanPaddingTopLeft = L.point(20, 80);
+  L.Popup.prototype.options.autoPanPaddingBottomRight = L.point(60, 110);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18, attribution: '&copy; OpenStreetMap'
   }).addTo(mapa);
@@ -238,7 +321,7 @@ function desenharMapa() {
 
   for (const el of $('dados-mapa').querySelectorAll('[data-sensor]')) {
     const d = el.dataset, intens = Math.min(+d.chuva / 50, 1);
-    const estilo = { radius: 3 + intens * 4, color: '#0e7490', weight: 1, fillColor: '#0e7490', fillOpacity: 0.25 + intens * 0.7 };
+    const estilo = { radius: 3 + intens * 4, color: '#475569', weight: 1, fillColor: '#475569', fillOpacity: 0.25 + intens * 0.7 };
     let m = marcEstacoes[d.sensor];
     if (!m) { m = marcEstacoes[d.sensor] = L.circleMarker([+d.lat, +d.lng], estilo).addTo(mapa).bindTooltip(''); }
     m.setStyle(estilo).setRadius(estilo.radius);
@@ -254,10 +337,22 @@ if (mapa) mapa.on('zoomend', desenharMapa);
 // junto com os vizinhos, quando o popup abrir.
 $('feed').addEventListener('click', e => {
   const cartao = e.target.closest('.alerta'), id = cartao && cartao.id.slice('alerta-'.length), dados = id && $('mapa-' + id);
-  if (!mapa || !dados || e.target.closest('button')) return;
+  if (!mapa || !dados || e.target.closest('button, details')) return;
   mapa.once('moveend', () => marcAlertas[id]?.openPopup());
   mapa.flyTo(L.polygon(JSON.parse(dados.dataset.contorno)).getBounds().getCenter(), Math.max(mapa.getZoom(), 15));
 });
+
+$('abrir-ajuda').addEventListener('click', () => $('ajuda').showModal());
+$('ajuda').addEventListener('click', e => { if (e.target === $('ajuda')) $('ajuda').close(); });
+
+// O morph fecha os <details> que o servidor renderiza fechados. Guardamos os
+// que o usuário abriu e reabrimos a cada atualização, antes de a tela pintar.
+const abertos = new Set();
+document.addEventListener('toggle', e => {
+  if (e.target.id) e.target.open ? abertos.add(e.target.id) : abertos.delete(e.target.id);
+}, true);
+document.addEventListener('htmx:after:swap', () => { for (const id of abertos) { const d = $(id); if (d) d.open = true; } });
+
 const semConexao = () => { $('conexao').textContent = '⚠ este servidor não está respondendo'; };
 document.addEventListener('htmx:error', semConexao);
 document.addEventListener('htmx:response:error', semConexao);
@@ -271,38 +366,41 @@ document.addEventListener('htmx:response:error', semConexao);
 <hx-partial hx-target="#nos" hx-swap="innerMorph">{{template "nos" .}}</hx-partial>
 <hx-partial hx-target="#estacoes" hx-swap="innerMorph">{{template "estacoes" .}}</hx-partial>
 <hx-partial hx-target="#contagem" hx-swap="innerMorph">{{template "contagem" .}}</hx-partial>
-<hx-partial hx-target="#resumo" hx-swap="innerMorph">{{template "resumo" .}}</hx-partial>
 <hx-partial hx-target="#feed" hx-swap="innerMorph">{{template "feed" .}}</hx-partial>
+<hx-partial hx-target="#ultimo" hx-swap="innerMorph">{{template "ultimo" .}}</hx-partial>
 <hx-partial hx-target="#logs" hx-swap="innerMorph">{{template "logs" .}}</hx-partial>
 <hx-partial hx-target="#dados-mapa" hx-swap="innerMorph">{{template "mapa" .}}</hx-partial>
 {{with .Aviso}}<hx-partial hx-target="#aviso" hx-swap="outerHTML"><div id="aviso" class="mostrar">{{.}}</div></hx-partial>{{end}}
 {{end}}
 
 {{define "topo"}}
-  <h1>Alertas de Chuva · Servidor <span>{{.No}}</span></h1>
+  <h1>Alertas de Chuva · <span>{{.No}}</span></h1>
+  <span class="meta extra" title="Servidor que está mostrando este painel. Ligado desde {{hora .Inicio}}.">servidor <b>{{.No}}</b> · {{pl .NAtivos "alerta ativo" "alertas ativos"}}</span>
+  <span class="meta" title="Servidores que este painel enxerga: este mais os que responderam na última troca de dados.">
+    <span class="ponto{{if lt .NPeersOnline (len .Peers)}} parcial{{end}}"></span>{{add1 .NPeersOnline}} de {{add1 (len .Peers)}} servidores conectados</span>
   <span class="meta" title="Resumo de todos os dados que este servidor conhece. Se o código for igual em todos os servidores, eles estão sincronizados e mostram exatamente os mesmos alertas.">
-    código dos dados <code>{{.Hash}}</code></span>
-  <span class="meta" title="Versão do modelo que calcula a credibilidade de cada alerta.">
-    modelo de credibilidade <code>{{.Modelo}}</code></span>
-  <span class="meta" id="conexao"></span>
+    dados <code>{{.Hash}}</code></span>
+  <span class="meta extra" title="Versão do modelo que calcula a credibilidade de cada alerta.">modelo <code>{{.Modelo}}</code></span>
+  <span class="meta extra" title="Quando este servidor foi ligado.">ligado desde {{hora .Inicio}}</span>
+  <span id="conexao"></span>
 {{end}}
 
 {{define "nos"}}
-  <div class="cartao no"><div class="topo">{{.No}} <span class="on">VOCÊ ESTÁ AQUI</span></div>
-    <div class="pequeno">{{pl .NAtivos "alerta ativo" "alertas ativos"}}<br>recebendo dados de {{pl (len .Estacoes) "pluviômetro" "pluviômetros"}}<br>
-    ligado desde {{hora .Inicio}}</div></div>
-  {{range .Peers}}<div id="peer-{{.URL}}" class="cartao no{{if not .Online}} offline{{end}}"><div class="topo">{{or .ID .URL}}
-    {{if .Online}}<span class="on">NO AR</span>{{else}}<span class="off">FORA DO AR</span>{{end}}</div>
-    <div class="pequeno">{{if .Online}}última troca de dados {{haQuanto $.Agora .UltimoOK}}
-      {{- else if not .UltimoOK.IsZero}}sem resposta há {{pl .Falhas "tentativa" "tentativas"}}; recebe tudo ao voltar
-      {{- else}}ainda não respondeu{{end}}</div></div>
+  <div class="linha-no" title="Este servidor, ligado desde {{hora .Inicio}}"><span class="ponto"></span><b>{{.No}}</b> <span class="pequeno">você</span>
+    <span class="quando">{{pl .NAtivos "alerta ativo" "alertas ativos"}}</span></div>
+  {{range .Peers}}<div id="peer-{{.URL}}" class="linha-no{{if not .Online}} offline{{end}}"
+    title="{{if .Online}}Última troca de dados {{haQuanto $.Agora .UltimoOK}}.
+      {{- else if not .UltimoOK.IsZero}}Sem resposta há {{pl .Falhas "tentativa" "tentativas"}}; recebe tudo ao voltar.
+      {{- else}}Ainda não respondeu.{{end}}"><span class="ponto"></span>{{or .ID .URL}}
+    <span class="quando">{{if .Online}}{{haQuanto $.Agora .UltimoOK}}{{else}}fora do ar{{end}}</span></div>
   {{end}}
 {{end}}
 
 {{define "estacoes"}}
   {{- if not .Estacoes}}<span class="vazio">Nenhum pluviômetro enviou dados ainda.</span>
-  {{- else}}{{pl (len .Estacoes) "pluviômetro enviando" "pluviômetros enviando"}} dados, {{.NChuvosas}} registrando chuva agora{{if .Chuvosas}}:{{else}}.{{end}}
-    {{- range .Chuvosas}}<br>{{.Sensor}}: <b>{{num .ChuvaMMh}} mm/h</b> ({{intensidade .ChuvaMMh}}){{end}}
+  {{- else if .Chuvosas}}<details id="det-chuvosas"><summary>{{len .Estacoes}} enviando · {{.NChuvosas}} com chuva</summary>
+    {{- range .Chuvosas}}{{.Sensor}}: <b>{{num .ChuvaMMh}} mm/h</b> ({{intensidade .ChuvaMMh}})<br>{{end}}</details>
+  {{- else}}{{len .Estacoes}} enviando · nenhum com chuva agora
   {{- end}}
 {{end}}
 
@@ -311,35 +409,40 @@ document.addEventListener('htmx:response:error', semConexao);
   {{- if .NAtivos}}<span class="contagem{{if .NEmergencia}} EMERGENCIA{{end}}">{{pl .NAtivos "ativo" "ativos"}}{{if .NEmergencia}}, {{.NEmergencia}} em emergência{{end}}</span>{{end}}
 {{- end}}
 
-{{define "resumo"}}
-  {{- if eq .NAtivos 0}}Nenhum alerta ativo no momento.
-  {{- else}}{{pl .NAtivos "alerta ativo" "alertas ativos"}}{{if .NEmergencia}}, {{.NEmergencia}} em emergência{{end}}. Cada alerta reúne os relatos de uma área de cerca de 1 km.
-  {{- end}}
+{{define "cartao"}}
+  <div id="alerta-{{.ID}}" class="cartao alerta {{.Nivel}}{{if not .Ativo}} inativo{{end}}">
+    <div class="topo">
+      <span class="titulo"><span class="selo">{{nivel .Nivel}}</span>{{titulos .VisaoAlerta}}</span>
+      <span class="credib" title="Credibilidade"><b>{{pct .Score}}</b></span>
+    </div>
+    <div class="medidor"><div style="width: {{pct .Score}}"></div></div>
+    <p class="orientacao">{{situacao .VisaoAlerta}}</p>
+    {{with mistura .VisaoAlerta}}<p class="pequeno mistura" title="Quantas pessoas diferentes relataram cada tipo neste alerta.">Relatos: {{.}}</p>{{end}}
+    <details id="det-{{.ID}}" class="mais">
+      <summary>detalhes</summary>
+      <ul class="motivos pequeno">{{range motivos .VisaoAlerta}}<li>{{.}}</li>{{end}}</ul>
+      {{with unicos .Comentarios}}<div class="comentarios pequeno">“{{juntar . "” · “"}}”</div>{{end}}
+      <div class="rodape pequeno">
+        <span>Último relato {{haQuanto .Agora .Atualizado}} ({{hora .Atualizado}}).
+          Dados recebidos {{if eq (len .NosOrigem) 1}}pelo servidor{{else}}pelos servidores{{end}} {{juntar .NosOrigem ", "}}.</span>
+        {{if .Ativo}}<button hx-post="/painel/alertas/{{caminho .ID}}/resolver" hx-swap="none"
+          style="margin-left:auto;font-size:11px;padding:1px 8px">marcar como resolvido</button>{{end}}
+      </div>
+      <div class="tecnico" title="Identificadores internos. O código da versão é igual em todos os servidores que já sincronizaram este alerta.">
+        alerta {{.ID}} · versão {{.Hash}} · score {{printf "%.3f" .Score}}</div>
+    </details>
+  </div>
 {{end}}
 
 {{define "feed"}}
-  {{range .Alertas}}
-  <div id="alerta-{{.ID}}" class="cartao alerta {{.Nivel}}{{if not .Ativo}} inativo{{end}}">
-    <div class="topo">
-      <span class="titulo"><span class="selo">{{nivel .Nivel}}</span>{{tipo .Tipo}}</span>
-      <span class="credib"><span class="pequeno">credibilidade</span> <b>{{pct .Score}}</b></span>
-    </div>
-    <div class="medidor"><div style="width: {{pct .Score}}"></div></div>
-    <p class="orientacao">{{situacao .}}</p>
-    <ul class="motivos pequeno">{{range motivos .}}<li>{{.}}</li>{{end}}</ul>
-    {{with unicos .Comentarios}}<div class="comentarios pequeno">“{{juntar . "” · “"}}”</div>{{end}}
-    <div class="rodape pequeno">
-      <span>Último relato {{haQuanto $.Agora .Atualizado}} ({{hora .Atualizado}}).
-        Dados recebidos {{if eq (len .NosOrigem) 1}}pelo servidor{{else}}pelos servidores{{end}} {{juntar .NosOrigem ", "}}.</span>
-      {{if .Ativo}}<button hx-post="/painel/alertas/{{caminho .ID}}/resolver" hx-swap="none"
-        style="margin-left:auto;font-size:11px;padding:1px 8px">marcar como resolvido</button>{{end}}
-    </div>
-    <div class="tecnico" title="Identificadores internos. O código da versão é igual em todos os servidores que já sincronizaram este alerta.">
-      alerta {{.ID}} · versão {{.Hash}} · score {{printf "%.3f" .Score}}</div>
-  </div>
-  {{else}}<p class="vazio">Nenhum alerta ainda. Clique no mapa para simular um relato.</p>
-  {{end}}
+  {{- $agora := .Agora}}
+  {{- range .Alertas}}{{if .Ativo}}{{template "cartao" (cartao . $agora)}}{{end}}{{end}}
+  {{- if eq .NAtivos 0}}<p class="vazio">Nenhum alerta ativo. Escolha o tipo e clique no mapa para relatar uma ocorrência.</p>{{end}}
+  {{- if .NInativos}}<details id="det-encerrados" class="resolvidos"><summary>Encerrados ({{.NInativos}})</summary>
+    {{- range .Alertas}}{{if not .Ativo}}{{template "cartao" (cartao . $agora)}}{{end}}{{end}}</details>{{end}}
 {{end}}
+
+{{define "ultimo"}}{{with .Eventos}}{{(index . 0).Texto}}{{else}}nada ainda{{end}}{{end}}
 
 {{define "logs"}}
   {{range .Eventos}}<div{{if .Erro}} class="erro"{{end}}><span class="quando">{{hora .Momento}}</span>{{.Texto}}{{with .Tecnico}} <span class="tecnico">{{.}}</span>{{end}}</div>
@@ -351,7 +454,8 @@ document.addEventListener('htmx:response:error', semConexao);
 conteúdo do popup) e um por pluviômetro (com o conteúdo da dica). */}}
 {{define "mapa"}}
   {{range .Alertas}}<div id="mapa-{{.ID}}" data-alerta="{{.ID}}" data-contorno="{{json .Contorno}}"{{with area .ID 7}} data-area7="{{.ID}}" data-contorno7="{{json .Contorno}}"{{end}}{{with area .ID 6}} data-area6="{{.ID}}" data-contorno6="{{json .Contorno}}"{{end}} data-nivel="{{.Nivel}}"{{if .Ativo}} data-ativo{{end}}>
-    <b>{{tipo .Tipo}}</b> · {{nivel .Nivel}} · credibilidade <b>{{pct .Score}}</b><br>{{situacao .}}<br>
+    <b>{{titulos .}}</b> · {{nivel .Nivel}} · credibilidade <b>{{pct .Score}}</b><br>{{situacao .}}<br>
+    {{with mistura .}}<span class="pequeno">Relatos: {{.}}</span><br>{{end}}
     <span class="pequeno">{{range $i, $m := motivos .}}{{if $i}}<br>{{end}}{{$m}}{{end}}</span><br>
     <span class="pequeno">último relato {{haQuanto $.Agora .Atualizado}}</span></div>
   {{end}}

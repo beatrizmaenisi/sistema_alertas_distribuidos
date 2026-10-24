@@ -17,7 +17,7 @@ docker compose stop no2          # derruba um nó
 docker compose start no2         # volta e alcança os outros sozinho
 ```
 
-Sem Docker (Go 1.24+):
+Sem Docker (Go 1.24+ e um compilador C, porque o [h3-go](https://github.com/uber/h3-go) usa cgo):
 
 ```sh
 ./scripts/cluster.sh             # sobe os 3 nós; Ctrl+C derruba todos
@@ -58,13 +58,15 @@ cmd/relato        gerador de relatos de usuários
 internal/alerta   estado replicado e regras de merge (CRDT)
 internal/credibilidade   features + regressão logística
 internal/no       nó: estado, gossip, API, painel (web/index.html)
-treino/           exportação do modelo do scikit-learn para JSON
+treino/           exportação do modelo do scikit-learn para JSON; celula.py agrupa relatos como os nós
 ```
 
 ### Estado replicado
 
-- **ID do alerta** = célula da grade de 0,01° (~1,1 km) + dia (horário de Brasília).
-  Relatos do mesmo evento recebidos por nós diferentes caem no mesmo alerta sem coordenação.
+- **ID do alerta** = hexágono H3 de resolução 8 (~0,74 km², ~460 m de lado) + dia (horário de Brasília),
+  ex. `88a8a3c0e3fffff_20220215`. Relatos do mesmo evento recebidos por nós diferentes caem no mesmo
+  alerta sem coordenação. Hexágonos têm os 6 vizinhos à mesma distância e só 3 se encontram num
+  vértice (contra 4 quadrados); o índice H3 é igual em Go e em Python (`treino/celula.py`).
 - **Relatos**: conjunto indexado pelo hash SHA-256 do dispositivo (LGPD). Merge = união;
   o mesmo dispositivo conta uma vez só.
 - **Leituras**: conjunto indexado por (sensor, datahora). Merge = união.
@@ -134,8 +136,8 @@ Leitura (firmware do ESP32 calcula a intensidade na borda somando as básculas d
 ## Limitações conhecidas
 
 - Estado só em memória: um nó que reinicia volta vazio e recupera pelo gossip; se **todos**
-  caírem, perde-se tudo. Persistência em PostgreSQL é o próximo passo (`../sistema_alertas_distribuidos/sql/schema.sql`).
-- Relatos dos dois lados da borda de uma célula viram dois alertas no mapa (ambos com o score
+  caírem, perde-se tudo. Persistência em PostgreSQL é o próximo passo (`../sql/schema.sql`).
+- Relatos dos dois lados da borda de um hexágono viram dois alertas no mapa (ambos com o score
   certo, porque a contagem de usuários olha 1 km em volta).
 - Lista de peers estática; sem autenticação entre nós nem de sensores.
 - Dashboard carrega Leaflet e o mapa da internet.

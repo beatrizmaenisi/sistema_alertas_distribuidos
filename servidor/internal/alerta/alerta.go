@@ -13,14 +13,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 	"sort"
+	"strings"
 	"time"
+
+	"github.com/uber/h3-go/v4"
 )
 
 const (
-	// TamanhoCelula é o lado da célula da grade que agrupa relatos, em graus (~1,1 km).
-	TamanhoCelula = 0.01
+	// ResolucaoCelula é a resolução da grade hexagonal H3 que agrupa relatos.
+	// Na 8, cada hexágono tem ~0,74 km² (~460 m de lado).
+	ResolucaoCelula = 8
 	// Validade é por quanto tempo um alerta continua ativo depois do último relato.
 	Validade = 6 * time.Hour
 	// Carencia é por quanto tempo, depois de resolvido, relatos novos ainda
@@ -71,7 +74,7 @@ type Relato struct {
 	NoOrigem    string    `json:"no_origem"`
 }
 
-// Alerta agrupa os relatos de uma mesma célula da grade em um mesmo dia
+// Alerta agrupa os relatos de um mesmo hexágono da grade em um mesmo dia
 // (Mensagem B). Os relatos são um conjunto indexado pelo hash do dispositivo,
 // então o mesmo dispositivo relatando duas vezes conta uma vez só.
 type Alerta struct {
@@ -85,10 +88,27 @@ type Alerta struct {
 // ChaveDe calcula o ID do alerta a partir do local e do momento do relato.
 // Como o ID é determinístico, relatos do mesmo evento recebidos por nós
 // diferentes caem no mesmo alerta sem nenhuma coordenação.
+// A célula é o índice H3 em hexadecimal, o mesmo que h3.latlng_to_cell
+// devolve em Python (ver treino/celula.py).
 func ChaveDe(lat, lng float64, t time.Time) string {
-	la := int64(math.Floor(lat / TamanhoCelula))
-	ln := int64(math.Floor(lng / TamanhoCelula))
-	return fmt.Sprintf("%d_%d_%s", la, ln, t.In(fusoReferencia).Format("20060102"))
+	// Só erra com coordenada inválida, que os nós rejeitam antes de chegar aqui.
+	c, _ := h3.LatLngToCell(h3.NewLatLng(lat, lng), ResolucaoCelula)
+	return fmt.Sprintf("%s_%s", c, t.In(fusoReferencia).Format("20060102"))
+}
+
+// Contorno são os vértices [lat, lng] do hexágono do alerta, para o mapa.
+// Vem do ID, então não depende dos relatos.
+func (a *Alerta) Contorno() [][2]float64 {
+	celula, _, _ := strings.Cut(a.ID, "_")
+	b, err := h3.CellFromString(celula).Boundary()
+	if err != nil {
+		return nil
+	}
+	vs := make([][2]float64, len(b))
+	for i, p := range b {
+		vs[i] = [2]float64{p.Lat, p.Lng}
+	}
+	return vs
 }
 
 func Novo(r Relato) *Alerta {

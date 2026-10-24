@@ -46,12 +46,12 @@ func TestCorroboracaoEntreNos(t *testing.T) {
 	nos, _ := cluster(t, 3)
 	t0 := time.Now().UTC()
 
-	_, err := nos[0].AdicionarRelato(alerta.Relato{Dispositivo: "a", Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175, Momento: t0})
+	_, err := nos[0].AdicionarRelato(alerta.Relato{Dispositivo: "a", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0})
 	if err != nil {
 		t.Fatal(err)
 	}
 	isolado := nos[0].Alertas(time.Now())[0].Score
-	nos[2].AdicionarRelato(alerta.Relato{Dispositivo: "b", Tipo: "ALAGAMENTO", Lat: -22.506, Lng: -43.176, Momento: t0.Add(time.Minute)})
+	nos[2].AdicionarRelato(alerta.Relato{Dispositivo: "b", Tipo: "ALAGAMENTO", Lat: -22.5054, Lng: -43.172, Momento: t0.Add(time.Minute)})
 	nos[1].AdicionarLeitura(alerta.Leitura{Sensor: "s1", Lat: -22.51, Lng: -43.18, ChuvaMMh: 18, Momento: t0})
 
 	rodadas(nos, 2)

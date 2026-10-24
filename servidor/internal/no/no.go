@@ -317,6 +317,7 @@ type VisaoAlerta struct {
 	Tipo        string             `json:"tipo"`
 	Lat         float64            `json:"lat"`
 	Lng         float64            `json:"lng"`
+	Contorno    [][2]float64       `json:"contorno"` // vértices [lat, lng] do hexágono H3
 	Status      alerta.Status      `json:"status"`
 	Reaberto    bool               `json:"reaberto"`
 	Nivel       string             `json:"nivel"`
@@ -342,7 +343,7 @@ func (n *No) visao(a *alerta.Alerta, vizinhos []alerta.Relato, leituras []alerta
 	av := n.cfg.Modelo.Avaliar(a, vizinhos, leituras)
 	lat, lng := a.Centro()
 	v := VisaoAlerta{
-		ID: a.ID, Tipo: a.TipoPredominante(), Lat: lat, Lng: lng,
+		ID: a.ID, Tipo: a.TipoPredominante(), Lat: lat, Lng: lng, Contorno: a.Contorno(),
 		Status: a.StatusEm(agora), Reaberto: a.Reaberto(), Nivel: av.Nivel, Score: av.Score, Versao: av.Versao,
 		Features: av.Features, Criado: a.Primeiro(), Atualizado: a.Ultimo(), Expira: a.Expira(),
 		Hash: a.Hash(), Sensores: []string{}, NosOrigem: []string{}, Comentarios: []string{},

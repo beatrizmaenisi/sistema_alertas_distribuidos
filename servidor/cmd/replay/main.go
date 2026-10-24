@@ -80,7 +80,7 @@ func noDaEstacao(cod string, nos []string) string {
 }
 
 func main() {
-	arquivo := flag.String("arquivo", "../sistema_alertas_distribuidos/dados/raw/RJ_Petropolis_2022-02.csv", "CSV do CEMADEN")
+	arquivo := flag.String("arquivo", "../dados/raw/RJ_Petropolis_2022-02.csv", "CSV do CEMADEN")
 	inicioStr := flag.String("inicio", "2022-02-15 17:00", "início do trecho, em UTC")
 	fimStr := flag.String("fim", "2022-02-16 00:00", "fim do trecho, em UTC")
 	nosStr := flag.String("nos", "http://localhost:8081,http://localhost:8082,http://localhost:8083", "URLs dos nós")

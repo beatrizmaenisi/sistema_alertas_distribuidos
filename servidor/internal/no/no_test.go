@@ -141,11 +141,11 @@ func TestStatusPeloNo(t *testing.T) {
 // pode deixar os nós com estados diferentes para sempre.
 func TestGossipIgnoraStatusInvalido(t *testing.T) {
 	nos, _ := cluster(t, 2)
-	r := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175, Momento: time.Now().UTC()}
+	r := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: time.Now().UTC()}
 	ruim := alerta.Novo(r)
 	ruim.Status = ""
 	nos[0].aplicar(Pacote{De: "peer-com-bug", Alertas: []*alerta.Alerta{ruim}})
-	nos[1].AdicionarRelato(alerta.Relato{Dispositivo: "b", Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175})
+	nos[1].AdicionarRelato(alerta.Relato{Dispositivo: "b", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171})
 
 	rodadas(nos, 3)
 	if nos[0].HashEstado() != nos[1].HashEstado() {
@@ -168,8 +168,8 @@ func TestParticaoReconecta(t *testing.T) {
 	nos[2].DefinirPeers([]string{srvs[3].URL})
 	nos[3].DefinirPeers([]string{srvs[2].URL})
 
-	nos[0].AdicionarRelato(alerta.Relato{Dispositivo: "a", Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175})
-	nos[2].AdicionarRelato(alerta.Relato{Dispositivo: "b", Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175})
+	nos[0].AdicionarRelato(alerta.Relato{Dispositivo: "a", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171})
+	nos[2].AdicionarRelato(alerta.Relato{Dispositivo: "b", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171})
 	nos[3].AdicionarLeitura(alerta.Leitura{Sensor: "s1", Lat: -22.51, Lng: -43.18, ChuvaMMh: 18})
 	rodadas(nos, 2)
 	if nos[0].HashEstado() == nos[2].HashEstado() {

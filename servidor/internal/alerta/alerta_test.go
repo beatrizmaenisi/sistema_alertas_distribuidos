@@ -67,8 +67,8 @@ func TestMesclarComutativoAssociativoIdempotente(t *testing.T) {
 
 func TestMesmoDispositivoContaUmaVez(t *testing.T) {
 	t0 := time.Date(2022, 2, 15, 18, 0, 0, 0, time.UTC)
-	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175, Momento: t0})
-	a.Mesclar(Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175, Momento: t0.Add(time.Minute)}))
+	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0})
+	a.Mesclar(Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0.Add(time.Minute)}))
 	if len(a.Relatos) != 1 || !a.Relatos["d1"].Momento.Equal(t0) {
 		t.Fatalf("esperava 1 relato com o momento mais antigo, veio %+v", a.Relatos)
 	}
@@ -76,13 +76,30 @@ func TestMesmoDispositivoContaUmaVez(t *testing.T) {
 
 func TestChaveMesmaCelulaEDia(t *testing.T) {
 	t0 := time.Date(2022, 2, 15, 18, 0, 0, 0, time.UTC)
-	k1 := ChaveDe(-22.5051, -43.1751, t0)
-	k2 := ChaveDe(-22.5059, -43.1759, t0.Add(2*time.Hour))
+	k1 := ChaveDe(-22.5045, -43.1711, t0)
+	k2 := ChaveDe(-22.5053, -43.1719, t0.Add(2*time.Hour))
 	if k1 != k2 {
 		t.Fatalf("relatos próximos no mesmo dia deveriam ter a mesma chave: %s != %s", k1, k2)
 	}
 	if k3 := ChaveDe(-22.52, -43.1751, t0); k3 == k1 {
 		t.Fatalf("célula vizinha não deveria ter a mesma chave")
+	}
+}
+
+// O contorno é o hexágono da chave: o centro dele cai na mesma célula.
+func TestContornoEhOHexagonoDaChave(t *testing.T) {
+	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: time.Now()})
+	vs := a.Contorno()
+	if len(vs) != 6 {
+		t.Fatalf("esperava 6 vértices, veio %v", vs)
+	}
+	var lat, lng float64
+	for _, v := range vs {
+		lat += v[0] / 6
+		lng += v[1] / 6
+	}
+	if ChaveDe(lat, lng, a.Primeiro()) != a.ID {
+		t.Fatalf("o centro do contorno (%v, %v) não cai na célula do alerta %s", lat, lng, a.ID)
 	}
 }
 
@@ -102,10 +119,10 @@ func TestChaveUsaDiaDeBrasilia(t *testing.T) {
 	tarde := time.Date(2022, 2, 15, 20, 0, 0, 0, time.UTC)    // 15/02 17h00 em Brasília
 	noite := time.Date(2022, 2, 16, 1, 30, 0, 0, time.UTC)    // 15/02 22h30 em Brasília
 	meiaNoite := time.Date(2022, 2, 16, 3, 0, 0, 0, time.UTC) // 16/02 00h00 em Brasília
-	if ChaveDe(-22.505, -43.175, tarde) != ChaveDe(-22.505, -43.175, noite) {
+	if ChaveDe(-22.5044, -43.171, tarde) != ChaveDe(-22.5044, -43.171, noite) {
 		t.Fatal("15/02 à tarde e à noite em Brasília deveriam ser o mesmo alerta")
 	}
-	if ChaveDe(-22.505, -43.175, noite) == ChaveDe(-22.505, -43.175, meiaNoite) {
+	if ChaveDe(-22.5044, -43.171, noite) == ChaveDe(-22.5044, -43.171, meiaNoite) {
 		t.Fatal("depois da meia-noite em Brasília deveria ser outro alerta")
 	}
 }
@@ -144,13 +161,13 @@ func TestMesclarIDDiferenteNaoFazNada(t *testing.T) {
 // cresce), mas não entram no centro nem nas features.
 func TestRelatoAntigoSaiDosVigentes(t *testing.T) {
 	t0 := time.Date(2022, 2, 15, 12, 0, 0, 0, time.UTC)
-	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5051, Lng: -43.1751, Momento: t0})
-	a.Mesclar(Novo(Relato{Dispositivo: "d2", Tipo: "ALAGAMENTO", Lat: -22.5059, Lng: -43.1759, Momento: t0.Add(7 * time.Hour)}))
+	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5045, Lng: -43.1711, Momento: t0})
+	a.Mesclar(Novo(Relato{Dispositivo: "d2", Tipo: "ALAGAMENTO", Lat: -22.5053, Lng: -43.1719, Momento: t0.Add(7 * time.Hour)}))
 	vs := a.Vigentes()
 	if len(a.Relatos) != 2 || len(vs) != 1 || vs[0].Dispositivo != "d2" {
 		t.Fatalf("esperava só d2 vigente, veio %+v", vs)
 	}
-	if lat, lng := a.Centro(); lat != -22.5059 || lng != -43.1759 {
+	if lat, lng := a.Centro(); lat != -22.5053 || lng != -43.1719 {
 		t.Fatalf("o centro deveria ignorar o relato antigo, veio %v, %v", lat, lng)
 	}
 }
@@ -171,18 +188,18 @@ func TestTipoPredominanteEmpateDeterministico(t *testing.T) {
 func TestReaberturaDepoisDaCarencia(t *testing.T) {
 	t0 := time.Date(2022, 2, 15, 12, 0, 0, 0, time.UTC)
 	resolvido := t0.Add(time.Hour)
-	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5051, Lng: -43.1751, Momento: t0})
+	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5045, Lng: -43.1711, Momento: t0})
 	a.Mesclar(&Alerta{ID: a.ID, Status: Resolvido, ResolvidoEm: resolvido})
 
 	// atrasado, dentro da carência: continua resolvido
-	a.Mesclar(Novo(Relato{Dispositivo: "d2", Tipo: "ALAGAMENTO", Lat: -22.5051, Lng: -43.1751, Momento: resolvido.Add(Carencia - time.Minute)}))
+	a.Mesclar(Novo(Relato{Dispositivo: "d2", Tipo: "ALAGAMENTO", Lat: -22.5045, Lng: -43.1711, Momento: resolvido.Add(Carencia - time.Minute)}))
 	if a.Reaberto() || a.StatusEm(resolvido.Add(time.Hour)) != Resolvido {
 		t.Fatal("relato dentro da carência não deveria reabrir")
 	}
 
 	// depois da carência: nova ocorrência, só com os relatos novos
 	novo := resolvido.Add(Carencia + time.Minute)
-	a.Mesclar(Novo(Relato{Dispositivo: "d3", Tipo: "DESLIZAMENTO", Lat: -22.5059, Lng: -43.1759, Momento: novo}))
+	a.Mesclar(Novo(Relato{Dispositivo: "d3", Tipo: "DESLIZAMENTO", Lat: -22.5053, Lng: -43.1719, Momento: novo}))
 	if !a.Reaberto() || a.StatusEm(novo) != Ativo {
 		t.Fatalf("relato depois da carência deveria reabrir, veio %s", a.StatusEm(novo))
 	}

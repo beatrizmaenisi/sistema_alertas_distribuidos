@@ -15,36 +15,63 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   :root {
     --fundo: #f5f6f8; --cartao: #fff; --texto: #1d2129; --suave: #6b7280; --borda: #d9dde3;
     --info: #3b82f6; --atencao: #d97706; --emergencia: #dc2626; --ok: #16a34a; --sensor: #0e7490;
+    --larg-esq: 380px; --larg-dir: 340px;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--fundo); color: var(--texto); }
-  header { display: flex; flex-wrap: wrap; gap: 6px 24px; align-items: baseline; padding: 12px 20px;
-           background: var(--texto); color: #fff; }
-  header h1 { margin: 0; font-size: 18px; }
-  header .meta { color: #c7ccd4; font-size: 13px; cursor: help; }
-  header code { color: #fff; background: #ffffff22; padding: 1px 6px; border-radius: 4px; }
+  html, body { height: 100%; }
+  body { margin: 0; overflow: hidden; font: 14px/1.45 system-ui, sans-serif; background: var(--fundo); color: var(--texto); }
+
+  /* As barras laterais guardam os painéis (alertas à esquerda, servidores e
+  atividade à direita); o mapa ocupa o resto da tela. Só o
+  cabeçalho e a barra de relato ficam flutuando sobre o mapa. A camada deles
+  não recebe cliques, só os próprios widgets, então arrastar e clicar nos
+  espaços vazios continua chegando ao mapa. */
+  #mapa { position: fixed; inset: 0 var(--larg-dir) 0 var(--larg-esq); z-index: 0; }
+  .lateral { position: fixed; top: 0; bottom: 0; z-index: 1000; overflow-y: auto;
+             display: flex; flex-direction: column; gap: 12px; padding: 12px; background: var(--fundo); }
+  #lateral-esq { left: 0; width: var(--larg-esq); border-right: 1px solid var(--borda); }
+  #lateral-dir { right: 0; width: var(--larg-dir); border-left: 1px solid var(--borda); }
+  #sobre { position: fixed; inset: 0 var(--larg-dir) 0 var(--larg-esq); z-index: 1000; pointer-events: none; display: grid; gap: 12px; padding: 12px 12px 26px;
+           grid-template-columns: minmax(0, 420px) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
+           grid-template-areas: "cab ." ". ." "barra barra"; }
+  .widget { pointer-events: auto; background: var(--cartao); border: 1px solid var(--borda); border-radius: 10px;
+            box-shadow: 0 4px 18px #0000001f; }
+  .lateral .widget { box-shadow: none; }
+  details.widget { flex: none; }
+  details.widget > summary { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; list-style: none; }
+  details.widget > summary::-webkit-details-marker { display: none; }
+  details.widget > summary::after { content: '▾'; margin-left: auto; color: var(--suave); transition: transform .15s; }
+  details.widget:not([open]) > summary::after { transform: rotate(-90deg); }
+  .corpo { padding: 0 12px 12px; }
+
+  .cabecalho { grid-area: cab; background: var(--texto); color: #fff; border-color: var(--texto); padding: 10px 14px; }
+  #topo { display: flex; flex-wrap: wrap; gap: 2px 16px; align-items: baseline; }
+  #topo h1 { margin: 0 0 2px; font-size: 17px; width: 100%; }
+  #topo .meta { color: #c7ccd4; font-size: 12px; cursor: help; }
+  #topo code { color: #fff; background: #ffffff22; padding: 1px 6px; border-radius: 4px; }
   #conexao { color: #fca5a5; font-weight: 600; }
-  .intro { margin: 16px 20px 0; padding: 10px 14px; background: #eef4ff; border: 1px solid #c9dbfb; border-radius: 8px; }
-  .intro summary { cursor: pointer; font-weight: 600; }
-  .intro p { margin: 6px 0 0; max-width: 980px; }
-  main { display: grid; grid-template-columns: 240px minmax(0, 1fr) 320px; gap: 16px; padding: 16px 20px; }
-  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
-  h2 { font-size: 15px; margin: 0 0 2px; }
+  .intro { margin-top: 6px; font-size: 13px; color: #e5e7eb; }
+  .intro summary { cursor: pointer; font-weight: 600; color: #fff; }
+  .intro p { margin: 6px 0 0; }
+
+  h2 { font-size: 15px; margin: 0; }
+  h3 { font-size: 13px; margin: 4px 0 2px; }
   .explica { color: var(--suave); font-size: 12px; margin: 0 0 8px; }
+  .contagem { font-size: 11px; font-weight: 700; color: #fff; background: var(--suave); border-radius: 10px; padding: 1px 8px; }
+  .contagem.EMERGENCIA { background: var(--emergencia); }
   .cartao { background: var(--cartao); border: 1px solid var(--borda); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
   .no .topo { display: flex; justify-content: space-between; font-weight: 600; }
   .on { color: var(--ok); font-size: 11px; font-weight: 600; }
   .off { color: var(--emergencia); font-size: 11px; font-weight: 600; }
   .no.offline { opacity: .6; }
   .pequeno { color: var(--suave); font-size: 12px; }
-  #mapa { height: 420px; border-radius: 8px; border: 1px solid var(--borda); margin-bottom: 6px; }
-  .legenda { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--suave); margin-bottom: 10px; }
+  .barra { grid-area: barra; justify-self: center; max-width: 720px; font-size: 13px; padding: 8px 12px; }
+  .relatar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+  .relatar b { margin-right: 4px; }
+  .legenda { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; color: var(--suave); margin-top: 6px; }
   .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
-  .barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; font-size: 13px;
-           background: var(--cartao); border: 1px solid var(--borda); border-radius: 8px; padding: 8px 12px; }
-  .barra b { margin-right: 4px; }
   select, button { font: inherit; padding: 4px 8px; border: 1px solid var(--borda); border-radius: 6px; background: #fff; cursor: pointer; }
-  .alerta { border-left: 4px solid var(--info); }
+  .alerta { border-left: 4px solid var(--info); cursor: pointer; }
   .alerta.ATENCAO { border-left-color: var(--atencao); }
   .alerta.EMERGENCIA { border-left-color: var(--emergencia); }
   .alerta.inativo { opacity: .55; }
@@ -65,47 +92,72 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   .rodape { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
   .tecnico { color: #9ca3af; font: 11px ui-monospace, monospace; }
   .resumo { margin: 0 0 8px; }
-  #logs { max-height: 640px; overflow-y: auto; font-size: 13px; }
+  #logs { font-size: 13px; }
   #logs div { border-bottom: 1px solid #eef0f3; padding: 4px 0; }
   #logs .quando { color: var(--suave); font-size: 11px; font-variant-numeric: tabular-nums; margin-right: 6px; }
   #logs .erro { color: var(--emergencia); }
-  #aviso { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--texto); color: #fff;
-           padding: 10px 16px; border-radius: 6px; display: none; max-width: min(560px, 90vw); }
+  #aviso { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 1100; background: var(--texto); color: #fff;
+           padding: 10px 16px; border-radius: 6px; display: none; max-width: min(560px, 90vw); box-shadow: 0 4px 18px #0000003a; }
   #aviso.mostrar { display: block; animation: sumir .4s ease 5s forwards; }
   @keyframes sumir { to { opacity: 0; visibility: hidden; } }
   .vazio { color: var(--suave); font-style: italic; }
+  @media (max-width: 900px) {
+    :root { --alt-esq: 25dvh; --alt-dir: 20dvh; }
+    #mapa, #sobre { inset: 0 0 calc(var(--alt-esq) + var(--alt-dir)) 0; }
+    .lateral { top: auto; left: 0; right: 0; width: auto; border: 0; border-top: 1px solid var(--borda); }
+    #lateral-esq { bottom: var(--alt-dir); height: var(--alt-esq); }
+    #lateral-dir { bottom: 0; height: var(--alt-dir); }
+    #sobre { grid-template-columns: minmax(0, 1fr); grid-template-areas: "cab" "." "barra"; }
+    .leaflet-control-zoom, .legenda, .dica { display: none; }
+  }
 </style>
 </head>
 <body>
-<header id="topo">{{template "topo" .}}</header>
-<details class="intro" open>
-  <summary>Como funciona este painel?</summary>
-  <p>Este é um dos servidores regionais do sistema. Moradores relatam ocorrências (alagamento, deslizamento, queda de árvore)
-    e pluviômetros espalhados pela cidade enviam quanto está chovendo. O servidor junta os relatos de uma mesma área (cerca de 1 km)
-    em um <b>alerta</b> e calcula a <b>credibilidade</b> dele: quanto mais pessoas diferentes relatam e quanto mais chuva os
-    pluviômetros próximos medem, maior a confiança — assim um relato falso isolado não vira emergência.</p>
-  <p>Os servidores trocam novidades entre si a cada segundo (protocolo <i>gossip</i>), então todos mostram os mesmos alertas.
-    Se um servidor sair do ar, os outros continuam funcionando, e ele recupera tudo o que perdeu ao voltar.</p>
-</details>
-<main>
-  <section>
-    <h2>Servidores da rede</h2>
-    <p class="explica">Cada servidor guarda uma cópia completa dos alertas.</p>
-    <div id="nos">{{template "nos" .}}</div>
-    <h2>Pluviômetros</h2>
-    <p class="explica">Sensores que medem a chuva, em milímetros por hora (mm/h).</p>
-    <div id="estacoes" class="cartao pequeno">{{template "estacoes" .}}</div>
-  </section>
-  <section>
-    <div id="mapa"></div>
-    <div class="legenda">
-      <span><i style="background:var(--info)"></i>Informativo (credibilidade abaixo de 40%)</span>
-      <span><i style="background:var(--atencao)"></i>Atenção (40% a 69%)</span>
-      <span><i style="background:var(--emergencia)"></i>Emergência (70% ou mais)</span>
-      <span><i style="background:var(--sensor)"></i>Pluviômetro (mais escuro = mais chuva)</span>
+<div id="mapa"></div>
+<aside id="lateral-esq" class="lateral">
+  <details class="widget" open>
+    <summary><h2>Alertas</h2><span id="contagem">{{template "contagem" .}}</span></summary>
+    <div class="corpo">
+      <p class="explica resumo" id="resumo">{{template "resumo" .}}</p>
+      <div id="feed">{{template "feed" .}}</div>
     </div>
-    <div class="barra">
-      <b>Viu alguma ocorrência?</b> Escolha o tipo e clique no mapa, no local onde ela aconteceu:
+  </details>
+</aside>
+<aside id="lateral-dir" class="lateral">
+  <details class="widget" open>
+    <summary><h2>Servidores e pluviômetros</h2></summary>
+    <div class="corpo">
+      <p class="explica">Cada servidor guarda uma cópia completa dos alertas.</p>
+      <div id="nos">{{template "nos" .}}</div>
+      <h3>Pluviômetros</h3>
+      <p class="explica">Sensores que medem a chuva, em milímetros por hora (mm/h).</p>
+      <div id="estacoes" class="pequeno">{{template "estacoes" .}}</div>
+    </div>
+  </details>
+  <details class="widget" open>
+    <summary><h2>O que está acontecendo</h2></summary>
+    <div class="corpo">
+      <p class="explica">Atividade deste servidor, da mais recente para a mais antiga.</p>
+      <div id="logs">{{template "logs" .}}</div>
+    </div>
+  </details>
+</aside>
+<div id="sobre">
+  <div class="widget cabecalho">
+    <header id="topo">{{template "topo" .}}</header>
+    <details class="intro">
+      <summary>Como funciona este painel?</summary>
+      <p>Este é um dos servidores regionais do sistema. Moradores relatam ocorrências (alagamento, deslizamento, queda de árvore)
+        e pluviômetros espalhados pela cidade enviam quanto está chovendo. O servidor junta os relatos de uma mesma área (cerca de 1 km)
+        em um <b>alerta</b> e calcula a <b>credibilidade</b> dele: quanto mais pessoas diferentes relatam e quanto mais chuva os
+        pluviômetros próximos medem, maior a confiança — assim um relato falso isolado não vira emergência.</p>
+      <p>Os servidores trocam novidades entre si a cada segundo (protocolo <i>gossip</i>), então todos mostram os mesmos alertas.
+        Se um servidor sair do ar, os outros continuam funcionando, e ele recupera tudo o que perdeu ao voltar.</p>
+    </details>
+  </div>
+  <div class="widget barra">
+    <div class="relatar">
+      <b>Viu alguma ocorrência?</b> <span class="dica">Escolha o tipo e clique no mapa, no local onde ela aconteceu:</span>
       <select id="tipo">
         <option value="ALAGAMENTO">Alagamento</option><option value="DESLIZAMENTO">Deslizamento</option>
         <option value="CHUVA_FORTE">Chuva forte</option><option value="QUEDA_ARVORE">Queda de árvore</option>
@@ -113,16 +165,14 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
       <label title="Desmarcado, todos os cliques são seus: relatar de novo não aumenta a credibilidade. Marcado, cada clique simula uma pessoa diferente, para demonstrar vários moradores relatando.">
         <input type="checkbox" id="simular"> simulação: cada clique é uma pessoa diferente</label>
     </div>
-    <h2>Alertas</h2>
-    <p class="explica resumo" id="resumo">{{template "resumo" .}}</p>
-    <div id="feed">{{template "feed" .}}</div>
-  </section>
-  <section>
-    <h2>O que está acontecendo</h2>
-    <p class="explica">Atividade deste servidor, da mais recente para a mais antiga.</p>
-    <div id="logs" class="cartao">{{template "logs" .}}</div>
-  </section>
-</main>
+    <div class="legenda">
+      <span><i style="background:var(--info)"></i>Informativo (credibilidade abaixo de 40%)</span>
+      <span><i style="background:var(--atencao)"></i>Atenção (40% a 69%)</span>
+      <span><i style="background:var(--emergencia)"></i>Emergência (70% ou mais)</span>
+      <span><i style="background:var(--sensor)"></i>Pluviômetro (mais escuro = mais chuva)</span>
+    </div>
+  </div>
+</div>
 <div id="aviso"></div>
 <div id="dados-mapa" hidden>{{template "mapa" .}}</div>
 <div hidden hx-get="/painel" hx-trigger="every 1s" hx-swap="none"></div>
@@ -132,10 +182,17 @@ const $ = id => document.getElementById(id);
 const novoAutor = () => 'painel-' + Math.random().toString(36).slice(2);
 const autorFixo = novoAutor();
 
+// Em telas estreitas os widgets começam recolhidos, para o mapa aparecer.
+if (matchMedia('(max-width: 900px)').matches) for (const d of document.querySelectorAll('details.widget')) d.open = false;
+
 let mapa = null;
 const marcAlertas = {}, marcEstacoes = {};
 if (window.L) {
-  mapa = L.map('mapa').setView([-22.51, -43.18], 12); // Petrópolis
+  mapa = L.map('mapa', { zoomControl: false }).setView([-22.51, -43.18], 12); // Petrópolis
+  L.control.zoom({ position: 'topright' }).addTo(mapa);
+  // Popups abrem fora das áreas cobertas pelo cabeçalho e pela barra de relato.
+  L.Popup.prototype.options.autoPanPaddingTopLeft = L.point(20, 140);
+  L.Popup.prototype.options.autoPanPaddingBottomRight = L.point(60, 120);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18, attribution: '&copy; OpenStreetMap'
   }).addTo(mapa);
@@ -143,7 +200,7 @@ if (window.L) {
     autor_id: $('simular').checked ? novoAutor() : autorFixo, tipo: $('tipo').value, lat: e.latlng.lat, lng: e.latlng.lng,
   }}));
 } else {
-  $('mapa').innerHTML = '<p class="vazio" style="padding:12px">Mapa indisponível (sem internet para carregar o Leaflet).</p>';
+  $('mapa').innerHTML = '<p class="vazio" style="padding:12px;text-align:center;margin-top:45vh">Mapa indisponível (sem internet para carregar o Leaflet).</p>';
 }
 
 // desenharMapa sincroniza os marcadores com #dados-mapa, que o servidor
@@ -156,8 +213,9 @@ function desenharMapa() {
     vistos.add(id);
     const estilo = { color: cor, fillColor: cor, fillOpacity: ativo ? 0.35 : 0.08, weight: 2, opacity: ativo ? 1 : 0.3 };
     let m = marcAlertas[id];
-    if (!m) { m = marcAlertas[id] = L.circle([+d.lat, +d.lng], { radius: 400, ...estilo }).addTo(mapa).bindPopup(''); }
-    m.setLatLng([+d.lat, +d.lng]).setStyle(estilo);
+    // O hexágono vem do ID do alerta, então não muda: só o estilo é atualizado.
+    if (!m) { m = marcAlertas[id] = L.polygon(JSON.parse(d.contorno), estilo).addTo(mapa).bindPopup(''); }
+    m.setStyle(estilo);
     if (m.getPopup().getContent() !== el.innerHTML) m.setPopupContent(el.innerHTML);
   }
   for (const id in marcAlertas) if (!vistos.has(id)) { mapa.removeLayer(marcAlertas[id]); delete marcAlertas[id]; }
@@ -173,6 +231,14 @@ function desenharMapa() {
 }
 desenharMapa();
 document.addEventListener('htmx:after:swap', desenharMapa);
+
+// Clicar num alerta da lista leva o mapa até ele e abre o popup.
+$('feed').addEventListener('click', e => {
+  const cartao = e.target.closest('.alerta'), m = cartao && marcAlertas[cartao.id.slice('alerta-'.length)];
+  if (!mapa || !m || e.target.closest('button')) return;
+  mapa.once('moveend', () => m.openPopup());
+  mapa.flyTo(m.getBounds().getCenter(), Math.max(mapa.getZoom(), 15));
+});
 const semConexao = () => { $('conexao').textContent = '⚠ este servidor não está respondendo'; };
 document.addEventListener('htmx:error', semConexao);
 document.addEventListener('htmx:response:error', semConexao);
@@ -185,6 +251,7 @@ document.addEventListener('htmx:response:error', semConexao);
 <hx-partial hx-target="#topo" hx-swap="innerMorph">{{template "topo" .}}</hx-partial>
 <hx-partial hx-target="#nos" hx-swap="innerMorph">{{template "nos" .}}</hx-partial>
 <hx-partial hx-target="#estacoes" hx-swap="innerMorph">{{template "estacoes" .}}</hx-partial>
+<hx-partial hx-target="#contagem" hx-swap="innerMorph">{{template "contagem" .}}</hx-partial>
 <hx-partial hx-target="#resumo" hx-swap="innerMorph">{{template "resumo" .}}</hx-partial>
 <hx-partial hx-target="#feed" hx-swap="innerMorph">{{template "feed" .}}</hx-partial>
 <hx-partial hx-target="#logs" hx-swap="innerMorph">{{template "logs" .}}</hx-partial>
@@ -219,6 +286,11 @@ document.addEventListener('htmx:response:error', semConexao);
     {{- range .Chuvosas}}<br>{{.Sensor}}: <b>{{num .ChuvaMMh}} mm/h</b> ({{intensidade .ChuvaMMh}}){{end}}
   {{- end}}
 {{end}}
+
+{{/* Contagem no título do widget de alertas, visível mesmo com ele recolhido. */}}
+{{define "contagem"}}
+  {{- if .NAtivos}}<span class="contagem{{if .NEmergencia}} EMERGENCIA{{end}}">{{pl .NAtivos "ativo" "ativos"}}{{if .NEmergencia}}, {{.NEmergencia}} em emergência{{end}}</span>{{end}}
+{{- end}}
 
 {{define "resumo"}}
   {{- if eq .NAtivos 0}}Nenhum alerta ativo no momento.
@@ -259,7 +331,7 @@ document.addEventListener('htmx:response:error', semConexao);
 {{/* Dados do mapa, lidos por desenharMapa: um elemento por alerta (com o
 conteúdo do popup) e um por pluviômetro (com o conteúdo da dica). */}}
 {{define "mapa"}}
-  {{range .Alertas}}<div id="mapa-{{.ID}}" data-alerta="{{.ID}}" data-lat="{{.Lat}}" data-lng="{{.Lng}}" data-nivel="{{.Nivel}}"{{if .Ativo}} data-ativo{{end}}>
+  {{range .Alertas}}<div id="mapa-{{.ID}}" data-alerta="{{.ID}}" data-contorno="{{json .Contorno}}" data-nivel="{{.Nivel}}"{{if .Ativo}} data-ativo{{end}}>
     <b>{{tipo .Tipo}}</b> · {{nivel .Nivel}} · credibilidade <b>{{pct .Score}}</b><br>{{situacao .}}<br>
     <span class="pequeno">{{range $i, $m := motivos .}}{{if $i}}<br>{{end}}{{$m}}{{end}}</span><br>
     <span class="pequeno">último relato {{haQuanto $.Agora .Atualizado}}</span></div>

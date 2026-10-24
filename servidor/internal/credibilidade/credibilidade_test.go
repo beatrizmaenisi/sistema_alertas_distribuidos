@@ -18,7 +18,7 @@ func alertaComUsuarios(n int) *alerta.Alerta {
 	for i := 0; i < n; i++ {
 		r := alerta.Relato{
 			Dispositivo: fmt.Sprintf("d%d", i), TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO",
-			Lat: -22.505, Lng: -43.175, Momento: t0.Add(time.Duration(i) * time.Minute),
+			Lat: -22.5044, Lng: -43.171, Momento: t0.Add(time.Duration(i) * time.Minute),
 		}
 		if a == nil {
 			a = alerta.Novo(r)
@@ -86,8 +86,8 @@ func TestCarregarModeloExportado(t *testing.T) {
 // mas devem se corroborar.
 func TestRelatosVizinhosContam(t *testing.T) {
 	m := Padrao()
-	r1 := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.4999, Lng: -43.175, Momento: t0}
-	r2 := alerta.Relato{Dispositivo: "b", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5001, Lng: -43.175, Momento: t0}
+	r1 := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5018, Lng: -43.175, Momento: t0}
+	r2 := alerta.Relato{Dispositivo: "b", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.502, Lng: -43.175, Momento: t0}
 	a1, a2 := alerta.Novo(r1), alerta.Novo(r2)
 	if a1.ID == a2.ID {
 		t.Fatal("o teste precisa de relatos em células diferentes")
@@ -122,8 +122,8 @@ func TestLeituraForaDaJanelaNaoConta(t *testing.T) {
 
 func TestRelatoVizinhoAntigoNaoConta(t *testing.T) {
 	m := Padrao()
-	r := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.4999, Lng: -43.175, Momento: t0}
-	velho := alerta.Relato{Dispositivo: "b", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5001, Lng: -43.175, Momento: t0.Add(-3 * time.Hour)}
+	r := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5018, Lng: -43.175, Momento: t0}
+	velho := alerta.Relato{Dispositivo: "b", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.502, Lng: -43.175, Momento: t0.Add(-3 * time.Hour)}
 	if f := m.Avaliar(alerta.Novo(r), []alerta.Relato{r, velho}, nil).Features[FeatLogNUsuarios]; f != math.Log1p(1) {
 		t.Fatalf("relato vizinho de 3 h antes não deveria contar, feature = %.3f", f)
 	}
@@ -132,8 +132,8 @@ func TestRelatoVizinhoAntigoNaoConta(t *testing.T) {
 // Quem relata dos dois lados da borda de uma célula continua sendo uma pessoa.
 func TestMesmoDispositivoEmDuasCelulasContaUmaVez(t *testing.T) {
 	m := Padrao()
-	r1 := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.4999, Lng: -43.175, Momento: t0}
-	r2 := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5001, Lng: -43.175, Momento: t0}
+	r1 := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5018, Lng: -43.175, Momento: t0}
+	r2 := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.502, Lng: -43.175, Momento: t0}
 	if f := m.Avaliar(alerta.Novo(r1), []alerta.Relato{r1, r2}, nil).Features[FeatLogNUsuarios]; f != math.Log1p(1) {
 		t.Fatalf("esperava 1 usuário, feature = %.3f", f)
 	}
@@ -141,8 +141,8 @@ func TestMesmoDispositivoEmDuasCelulasContaUmaVez(t *testing.T) {
 
 func TestSensorNaoContaComoUsuario(t *testing.T) {
 	m := Padrao()
-	r := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175, Momento: t0}
-	s := alerta.Relato{Dispositivo: "sensor:s1", TipoAutor: alerta.Sensor, Tipo: "CHUVA_FORTE", Lat: -22.505, Lng: -43.175, Momento: t0}
+	r := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0}
+	s := alerta.Relato{Dispositivo: "sensor:s1", TipoAutor: alerta.Sensor, Tipo: "CHUVA_FORTE", Lat: -22.5044, Lng: -43.171, Momento: t0}
 	a := alerta.Novo(r)
 	a.Mesclar(alerta.Novo(s))
 	if f := m.Avaliar(a, []alerta.Relato{r, s}, nil).Features[FeatLogNUsuarios]; f != math.Log1p(1) {
@@ -154,9 +154,9 @@ func TestSensorNaoContaComoUsuario(t *testing.T) {
 // o dia), mas os relatos de antes da meia-noite ainda corroboram o novo.
 func TestViradaDoDiaAindaCorrobora(t *testing.T) {
 	m := Padrao()
-	antes := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175,
+	antes := alerta.Relato{Dispositivo: "a", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171,
 		Momento: time.Date(2022, 2, 16, 2, 50, 0, 0, time.UTC)} // 23h50 em Brasília
-	depois := alerta.Relato{Dispositivo: "b", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.505, Lng: -43.175,
+	depois := alerta.Relato{Dispositivo: "b", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171,
 		Momento: time.Date(2022, 2, 16, 3, 10, 0, 0, time.UTC)} // 00h10 em Brasília
 	a1, a2 := alerta.Novo(antes), alerta.Novo(depois)
 	if a1.ID == a2.ID {
@@ -180,7 +180,7 @@ func TestReabertoRecomecaDoZero(t *testing.T) {
 	resolvido := t0.Add(time.Hour)
 	a.Mesclar(&alerta.Alerta{ID: a.ID, Status: alerta.Resolvido, ResolvidoEm: resolvido})
 	novo := alerta.Relato{Dispositivo: "outro", TipoAutor: alerta.Usuario, Tipo: "ALAGAMENTO",
-		Lat: -22.505, Lng: -43.175, Momento: resolvido.Add(alerta.Carencia + 10*time.Minute)}
+		Lat: -22.5044, Lng: -43.171, Momento: resolvido.Add(alerta.Carencia + 10*time.Minute)}
 	a.Mesclar(alerta.Novo(novo))
 
 	var todos []alerta.Relato

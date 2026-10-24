@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -59,6 +60,7 @@ var modelosPainel = template.Must(template.New("").Funcs(template.FuncMap{
 	"unicos":      unicos,
 	"juntar":      strings.Join,
 	"caminho":     url.PathEscape,
+	"json":        func(v any) (string, error) { b, err := json.Marshal(v); return string(b), err },
 }).ParseFS(arquivosWeb, "web/index.html"))
 
 type linhaEvento struct {

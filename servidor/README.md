@@ -1,121 +1,161 @@
-# Alertas Distribuídos — servidor (Go)
+# Alertas Distribuídos - servidor regional
 
-**Vertente: SmartCity — monitoramento pluviométrico urbano.**
+Este diretório contém o servidor regional do sistema de alertas distribuídos. Cada servidor recebe relatos de cidadãos e leituras de pluviômetros IoT, calcula a credibilidade de cada alerta e replica seu estado para os demais servidores por meio de um protocolo *gossip*, sem ponto único de falha.
 
-Servidores regionais que recebem relatos de cidadãos e leituras de
-pluviômetros IoT, calculam a credibilidade de cada alerta e replicam o estado
-entre si por protocolo gossip, sem ponto único de falha.
+O documento está organizado em três partes: instalação e execução, arquitetura e justificativa das decisões de projeto.
 
-## Como rodar
+## Requisitos
 
-Com Docker (é o que vai no manual):
+| Componente | Versão | Finalidade |
+|---|---|---|
+| Docker e Docker Compose | recente | Execução dos três nós (modo recomendado) |
+| Go | 1.24 ou superior | Compilação local e ferramentas de simulação |
+| Compilador C (gcc) | qualquer | Exigido pelo cgo, do qual o [h3-go](https://github.com/uber/h3-go) depende |
+| Python | 3.10 ou superior | Apenas para treinar e exportar o modelo de credibilidade |
+
+## Execução
+
+### Com Docker (recomendado)
+
+A partir do diretório `servidor/`:
 
 ```sh
-docker compose up --build        # sobe no1, no2, no3
-# painéis: http://localhost:8081  http://localhost:8082  http://localhost:8083
-docker compose stop no2          # derruba um nó
-docker compose start no2         # volta e alcança os outros sozinho
+docker compose up --build
 ```
 
-Sem Docker (Go 1.24+ e um compilador C, porque o [h3-go](https://github.com/uber/h3-go) usa cgo):
+O comando constrói a imagem e inicia os nós `no1`, `no2` e `no3`. Os painéis ficam disponíveis em:
+
+- http://localhost:8081 (`no1`)
+- http://localhost:8082 (`no2`)
+- http://localhost:8083 (`no3`)
+
+Para observar a tolerância a falhas, basta interromper um nó e reiniciá-lo:
 
 ```sh
-./scripts/cluster.sh             # sobe os 3 nós; Ctrl+C derruba todos
-kill $(cat /tmp/alertas-no2.pid) # derruba só o no2
-go test ./...                    # testes
+docker compose stop no2
+docker compose start no2
 ```
 
-Ferramentas de simulação:
+Ao retornar, o nó recupera todo o estado perdido na primeira rodada de *gossip*.
+
+### Sem Docker
+
+Com Go e gcc instalados (no Arch Linux, `sudo pacman -S go gcc`):
 
 ```sh
-go build -o bin/ ./cmd/...
+go build -o bin/ ./cmd/...   # gera bin/no, bin/replay e bin/relato
+./scripts/cluster.sh         # inicia os três nós locais
+go test ./...                # executa os testes
+```
 
-# reproduz o evento de Petrópolis (15/02/2022) com dados reais do CEMADEN, 60x mais rápido
-./bin/replay -velocidade 60
+O `cluster.sh` encerra todos os nós ao receber Ctrl+C. Para derrubar apenas um deles, utiliza-se `kill $(cat /tmp/alertas-no2.pid)`. As portas são as mesmas do modo Docker, de modo que os painéis mantêm o mesmo endereço nos dois casos.
 
-# relatos de usuários simulados (cada um de um dispositivo diferente)
+### Configuração do nó
+
+Cada opção pode ser definida por *flag* ou por variável de ambiente; a *flag* tem precedência.
+
+| Flag | Variável | Padrão | Descrição |
+|---|---|---|---|
+| `-id` | `NO_ID` | `no1` | Identificador do nó |
+| `-porta` | `PORTA` | `8081` | Porta HTTP |
+| `-peers` | `PEERS` | vazio | URLs dos demais nós, separadas por vírgula |
+| `-intervalo` | `INTERVALO_MS` | `1s` | Intervalo entre rodadas de *gossip*. A *flag* recebe uma duração (`500ms`, `2s`); a variável, um inteiro em milissegundos |
+| `-fanout` | `FANOUT` | `2` | Número de *peers* contatados por rodada |
+| `-limiar` | `LIMIAR_MM_H` | `25` | Intensidade (mm/h) a partir da qual uma estação dispara um alerta sem depender de relatos |
+| `-modelo` | `MODELO` | vazio | Arquivo JSON do modelo treinado; se vazio, usam-se os pesos iniciais |
+
+### Ferramentas de simulação
+
+Os comandos abaixo devem ser executados em `servidor/`, com os nós em execução.
+
+**`replay`** reproduz dados reais do CEMADEN como se fossem leituras de sensores IoT. Por padrão, reproduz o evento de Petrópolis de 15/02/2022 a partir de `../dados/raw/RJ_Petropolis_2022-02.csv`:
+
+```sh
+./bin/replay -velocidade 60   # 60 = uma hora de dados por minuto
+```
+
+Outras opções: `-arquivo` (CSV de entrada), `-inicio` e `-fim` (trecho reproduzido, em UTC) e `-nos` (URLs dos nós).
+
+**`relato`** gera relatos de usuários simulados, cada um proveniente de um dispositivo distinto:
+
+```sh
 ./bin/relato -no http://localhost:8081 -lat -22.505 -lng -43.18 -n 3 -comentario "rua alagada"
 ```
 
-## Roteiro da demo
+Outras opções: `-tipo` (`ALAGAMENTO`, `DESLIZAMENTO`, `CHUVA_FORTE` ou `QUEDA_ARVORE`) e `-espalhar` (raio, em metros, em torno do ponto informado).
 
-1. Abrir os 3 painéis lado a lado. Mostrar que os três têm o mesmo **hash de estado** no topo.
-2. `./bin/replay -velocidade 120` — leituras reais chegam em nós diferentes; estações acima
-   de 25 mm/h disparam alertas sozinhas (sensor como nó âncora). Os três painéis mostram os mesmos alertas.
-3. Clicar no mapa do **no1** numa área sem estação → alerta INFO (~0,29). Clicar perto do mesmo
-   ponto no painel do **no3** → o score sobe nos três nós (corroboração entre servidores).
-4. `./bin/relato -no http://localhost:8082 -lat -22.9068 -lng -43.1729 -n 5` — 5 relatos falsos
-   num lugar seco: sobe, mas fica em ATENCAO; sem sensor não chega a EMERGENCIA.
-5. `docker compose stop no2` → no2 aparece OFFLINE nos outros; continuar relatando no no1.
-   `docker compose start no2` → ele volta vazio e em ~1 s puxa todo o estado (hash igual de novo).
+### Roteiro de demonstração
+
+1. Abrir os três painéis lado a lado e verificar que todos exibem o mesmo **hash de estado** no topo.
+2. Executar `./bin/replay -velocidade 120`. As leituras chegam a nós diferentes, e as estações acima de 25 mm/h disparam alertas por conta própria (sensor como nó âncora). Os três painéis passam a exibir os mesmos alertas.
+3. Clicar no mapa do `no1` em uma área sem estação: surge um alerta INFO (score ≈ 0,29). Clicar próximo ao mesmo ponto no painel do `no3`: o score aumenta nos três nós (corroboração entre servidores).
+4. Executar `./bin/relato -no http://localhost:8082 -lat -22.9068 -lng -43.1729 -n 5`, que envia cinco relatos falsos em um local sem chuva. O score sobe, mas o alerta permanece em ATENCAO: sem confirmação de sensor, não atinge EMERGENCIA.
+5. Executar `docker compose stop no2`. Os demais nós passam a exibi-lo como OFFLINE; novos relatos continuam sendo aceitos pelo `no1`. Em seguida, `docker compose start no2`: o nó retorna sem estado e, em cerca de 1 s, recupera tudo, voltando a apresentar o mesmo hash.
 
 ## Arquitetura
 
 ```
-cmd/no            servidor regional (API HTTP + gossip + painel)
-cmd/replay        replay de CSV do CEMADEN como sensores IoT
-cmd/relato        gerador de relatos de usuários
-internal/alerta   estado replicado e regras de merge (CRDT)
-internal/credibilidade   features + regressão logística
-internal/no       nó: estado, gossip, API, painel (web/index.html)
-treino/           exportação do modelo do scikit-learn para JSON; celula.py agrupa relatos como os nós
+cmd/no                  servidor regional (API HTTP, gossip e painel)
+cmd/replay              reprodução de CSV do CEMADEN como sensores IoT
+cmd/relato              gerador de relatos de usuários
+internal/alerta         estado replicado e regras de merge (CRDT)
+internal/credibilidade  cálculo das features e regressão logística
+internal/no             nó: estado, gossip, API e painel (web/index.html)
+treino/                 exportação do modelo scikit-learn para JSON; celula.py agrupa relatos como os nós
 ```
 
 ### Estado replicado
 
-- **ID do alerta** = hexágono H3 de resolução 8 (~0,74 km², ~460 m de lado) + dia (horário de Brasília),
-  ex. `88a8a3c0e3fffff_20220215`. Relatos do mesmo evento recebidos por nós diferentes caem no mesmo
-  alerta sem coordenação. Hexágonos têm os 6 vizinhos à mesma distância e só 3 se encontram num
-  vértice (contra 4 quadrados); o índice H3 é igual em Go e em Python (`treino/celula.py`).
-- **Relatos**: conjunto indexado pelo hash SHA-256 do dispositivo (LGPD). Merge = união;
-  o mesmo dispositivo conta uma vez só e, se relatar de novo, vale o relato mais recente.
-- **Leituras**: conjunto indexado por (sensor, datahora). Merge = união.
-- **Status**: ATIVO < RECONHECIDO < RESOLVIDO. Merge = maior. EXPIRADO é derivado (6 h sem relato novo).
-- **Reabertura**: resolver guarda `resolvido_em` (merge = mais recente). Relatos até 30 min depois (carência) são atrasados da mesma ocorrência; um relato depois disso reabre o alerta (derivado, volta a ATIVO) e a credibilidade recomeça só com os relatos e leituras posteriores à carência. Resolver de novo fecha outra vez.
-- **Score, nível, centro e expiração não trafegam**: cada nó calcula a partir do estado.
-  Nós com o mesmo estado calculam o mesmo score.
+- **Identificador do alerta:** célula H3 de resolução 8 concatenada à data no horário de Brasília (ex.: `88a8a3c0e3fffff_20220215`).
+- **Relatos:** conjunto indexado pelo hash SHA-256 do identificador do dispositivo. O merge é a união dos conjuntos; havendo dois relatos do mesmo dispositivo, prevalece o mais recente.
+- **Leituras:** conjunto indexado pelo par (sensor, data/hora). O merge é a união.
+- **Status:** reticulado `ATIVO < RECONHECIDO < RESOLVIDO`; o merge adota o maior valor. `EXPIRADO` não é armazenado, mas derivado: um alerta expira após 6 h sem relatos novos.
+- **Resolução:** o campo `resolvido_em` registra o instante da resolução mais recente (merge pelo maior valor).
+- **Score, nível, centro e validade não são transmitidos:** cada nó os calcula a partir do estado local.
 
-Como o merge é comutativo, associativo e idempotente, os nós convergem em qualquer ordem
-de mensagens e com mensagens repetidas (testado em `internal/alerta/alerta_test.go`). Isso
-trata a limitação "nós podem possuir valores incongruentes para o mesmo evento" do pré-projeto.
+### Gossip
 
-### Gossip (anti-entropia push-pull, Demers et al. 1987)
+A cada intervalo (ou imediatamente após receber uma novidade), cada nó seleciona `fanout` *peers* e executa uma rodada de anti-entropia *push-pull*:
 
-A cada 1 s (ou logo após uma novidade), cada nó escolhe `fanout` peers e:
+1. envia um *digest* contendo o hash de cada alerta e do conjunto de leituras de cada sensor;
+2. o *peer* responde com os itens ausentes ou divergentes no remetente e solicita os que lhe faltam;
+3. o remetente realiza o merge e envia os itens solicitados.
 
-1. envia um **digest** (hash de cada alerta e do conjunto de leituras de cada sensor);
-2. o peer responde com o que o primeiro não tem ou tem diferente, e pede o que falta para ele;
-3. o primeiro mescla e envia o que foi pedido.
-
-No fim de uma rodada os dois têm o mesmo estado. Um nó que volta de uma queda puxa tudo na primeira rodada.
+Ao fim da rodada, os dois nós possuem estados idênticos.
 
 ### Credibilidade
 
-Regressão logística sobre três features (definições em `internal/credibilidade` e `treino/exportar_modelo.py`):
+A credibilidade é estimada por regressão logística sobre três *features*:
 
-| feature | significado |
+| Feature | Definição |
 |---|---|
-| `log_n_usuarios` | ln(1 + usuários distintos que relataram a até 1 km) |
-| `chuva_max_mm_h` | maior intensidade medida por estação a até 5 km, de 1 h antes do 1º relato até a expiração |
-| `dispersao_km` | distância média dos relatos ao centro |
+| `log_n_usuarios` | ln(1 + número de usuários distintos com relatos a até 1 km) |
+| `chuva_max_mm_h` | maior intensidade medida por estações a até 5 km, desde 1 h antes do primeiro relato até a expiração do alerta |
+| `dispersao_km` | distância média dos relatos ao centro do alerta |
 
-Hoje roda com pesos iniciais (`heuristico-v0`). O modelo treinado entra por arquivo:
-treinar `Pipeline(StandardScaler, LogisticRegression)` no scikit-learn, exportar com
-`treino/exportar_modelo.py` e iniciar os nós com `-modelo modelo/modelo.json` (ou `MODELO=` no compose).
-Score ≥ 0,7 → EMERGENCIA, ≥ 0,4 → ATENCAO, senão INFO.
+O score resultante define o nível: ≥ 0,7 corresponde a EMERGENCIA, ≥ 0,4 a ATENCAO e valores inferiores a INFO.
 
-## API
+Na ausência de modelo treinado, os nós utilizam pesos iniciais (`heuristico-v0`). Para utilizar um modelo treinado:
 
-| método | rota | uso |
+1. Instalar as dependências: `pip install scikit-learn "h3>=4"`.
+2. Treinar um `Pipeline(StandardScaler, LogisticRegression)` com as colunas de `FEATURES`, na ordem definida em `treino/exportar_modelo.py`.
+3. Exportar o pipeline com `treino/exportar_modelo.py`, gerando `modelo/modelo.json`.
+4. Iniciar os nós com `-modelo modelo/modelo.json`. No Docker, descomentar a linha `MODELO` em `docker-compose.yml` e reconstruir a imagem (`docker compose up --build`), pois o diretório `modelo/` é copiado durante o build.
+
+As definições das *features* estão duplicadas em `internal/credibilidade` (Go) e em `treino/exportar_modelo.py` (Python). Qualquer alteração deve ser feita nos dois locais.
+
+### API
+
+| Método | Rota | Finalidade |
 |---|---|---|
-| POST | `/api/relatos` | relato de usuário (Mensagem A) |
-| POST | `/api/leituras` | leitura de sensor (uma ou lista) — é o que o ESP32 chama |
-| GET | `/api/alertas?lat=&lng=&raio_km=` | alertas ativos perto de um ponto (`todos=1` inclui expirados) |
-| POST | `/api/alertas/{id}/status` | `{"status":"RESOLVIDO"}` |
-| GET | `/api/estado` | tudo o que o painel mostra |
-| POST | `/gossip/sync`, `/gossip/push` | entre nós |
+| POST | `/api/relatos` | Relato de usuário (Mensagem A) |
+| POST | `/api/leituras` | Leitura de sensor, individual ou em lista (rota utilizada pelo ESP32) |
+| GET | `/api/alertas?lat=&lng=&raio_km=` | Alertas ativos próximos a um ponto (`todos=1` inclui os expirados) |
+| POST | `/api/alertas/{id}/status` | Alteração de status, ex.: `{"status": "RESOLVIDO"}` |
+| GET | `/api/estado` | Estado completo exibido pelo painel |
+| POST | `/gossip/sync`, `/gossip/push` | Comunicação entre nós |
 
-Relato:
+Exemplo de relato:
 
 ```json
 {"autor_id": "id-do-aparelho", "tipo": "ALAGAMENTO",
@@ -123,21 +163,19 @@ Relato:
  "comentario": "rua alagada", "timestamp_evento": "2026-10-27T14:00:00-03:00"}
 ```
 
-`tipo`: ALAGAMENTO, DESLIZAMENTO, CHUVA_FORTE, QUEDA_ARVORE. `timestamp_evento` é opcional.
+O campo `timestamp_evento` é opcional.
 
-Leitura (firmware do ESP32 calcula a intensidade na borda somando as básculas da última hora):
+Exemplo de leitura:
 
 ```json
 {"id_sensor": "esp32-01", "lat": -22.505, "lng": -43.18, "chuva_mm_h": 12.4}
 ```
 
-`datahora` é opcional (sem NTP o servidor usa a hora de chegada).
+O campo `datahora` é opcional; na sua ausência (por exemplo, em um sensor sem NTP), o servidor adota o horário de recebimento.
 
 ## Limitações conhecidas
 
-- Estado só em memória: um nó que reinicia volta vazio e recupera pelo gossip; se **todos**
-  caírem, perde-se tudo. Persistência em PostgreSQL é o próximo passo (`../sql/schema.sql`).
-- Relatos dos dois lados da borda de um hexágono viram dois alertas no mapa (ambos com o score
-  certo, porque a contagem de usuários olha 1 km em volta).
-- Lista de peers estática; sem autenticação entre nós nem de sensores.
-- Dashboard carrega Leaflet e o mapa da internet.
+- O estado é mantido apenas em memória. Um nó reiniciado volta vazio e se recupera pelo *gossip*, mas, se todos os nós caírem simultaneamente, o estado é perdido. A persistência em PostgreSQL (`../sql/schema.sql`) ainda não foi implementada.
+- Não há autenticação entre nós nem entre sensores e nós.
+- Relatos em lados opostos da borda entre duas células formam dois alertas distintos no mapa. O score de ambos permanece correto, pois a contagem de usuários considera um raio de 1 km.
+- O painel requer acesso à internet para carregar a biblioteca MapLibre e os blocos do mapa (OpenFreeMap).

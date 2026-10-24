@@ -110,8 +110,8 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
         <option value="ALAGAMENTO">Alagamento</option><option value="DESLIZAMENTO">Deslizamento</option>
         <option value="CHUVA_FORTE">Chuva forte</option><option value="QUEDA_ARVORE">Queda de árvore</option>
       </select>
-      <label title="Desmarcado, cada clique simula uma pessoa diferente. Marcado, simula a mesma pessoa relatando de novo — o que não aumenta a credibilidade.">
-        <input type="checkbox" id="mesmo"> relatar como a mesma pessoa</label>
+      <label title="Desmarcado, todos os cliques são seus: relatar de novo não aumenta a credibilidade. Marcado, cada clique simula uma pessoa diferente, para demonstrar vários moradores relatando.">
+        <input type="checkbox" id="simular"> simulação: cada clique é uma pessoa diferente</label>
     </div>
     <h2>Alertas</h2>
     <p class="explica resumo" id="resumo">{{template "resumo" .}}</p>
@@ -140,7 +140,7 @@ if (window.L) {
     maxZoom: 18, attribution: '&copy; OpenStreetMap'
   }).addTo(mapa);
   mapa.on('click', e => htmx.ajax('POST', '/painel/relatos', { source: '#mapa', swap: 'none', values: {
-    autor_id: $('mesmo').checked ? autorFixo : novoAutor(), tipo: $('tipo').value, lat: e.latlng.lat, lng: e.latlng.lng,
+    autor_id: $('simular').checked ? novoAutor() : autorFixo, tipo: $('tipo').value, lat: e.latlng.lat, lng: e.latlng.lng,
   }}));
 } else {
   $('mapa').innerHTML = '<p class="vazio" style="padding:12px">Mapa indisponível (sem internet para carregar o Leaflet).</p>';

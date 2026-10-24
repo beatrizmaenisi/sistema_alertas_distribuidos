@@ -2,8 +2,10 @@
 # Painéis: http://localhost:8081, :8082, :8083
 # Derrubar um nó: docker compose stop no2   |   voltar: docker compose start no2
 x-no: &no
+  # Sem "image:" de propósito: com um nome só, os três nós constroem a mesma
+  # imagem em paralelo e disputam a tag ("image already exists"). Assim cada um
+  # tem a sua (servidor-no1, ...), e o cache de camadas faz o build uma vez só.
   build: .
-  image: alertas-no
   restart: "no"
   environment: &env
     PORTA: "8080"

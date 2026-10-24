@@ -61,7 +61,20 @@ var modelosPainel = template.Must(template.New("").Funcs(template.FuncMap{
 	"juntar":      strings.Join,
 	"caminho":     url.PathEscape,
 	"json":        func(v any) (string, error) { b, err := json.Marshal(v); return string(b), err },
+	"area":        areaMapa,
 }).ParseFS(arquivosWeb, "web/index.html"))
+
+// areaMapa é o hexágono pai, na resolução res, de onde o mapa junta o
+// alerta id com os vizinhos quando está afastado.
+type area struct {
+	ID       string
+	Contorno [][2]float64
+}
+
+func areaMapa(id string, res int) area {
+	c, vs := alerta.CelulaPai(id, res)
+	return area{c, vs}
+}
 
 type linhaEvento struct {
 	Momento time.Time

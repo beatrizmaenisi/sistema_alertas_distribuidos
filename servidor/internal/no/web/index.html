@@ -170,6 +170,7 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
       <span><i style="background:var(--atencao)"></i>Atenção (40% a 69%)</span>
       <span><i style="background:var(--emergencia)"></i>Emergência (70% ou mais)</span>
       <span><i style="background:var(--sensor)"></i>Pluviômetro (mais escuro = mais chuva)</span>
+      <span>Cada hexágono é a área de um alerta; afastando o mapa, os vizinhos se juntam numa região maior</span>
     </div>
   </div>
 </div>
@@ -203,22 +204,37 @@ if (window.L) {
   $('mapa').innerHTML = '<p class="vazio" style="padding:12px;text-align:center;margin-top:45vh">Mapa indisponível (sem internet para carregar o Leaflet).</p>';
 }
 
+// Resolução H3 desenhada em cada zoom: de perto, um hexágono por alerta (a
+// resolução 8 do ID); de longe, os alertas vizinhos se juntam no hexágono pai.
+// É só apresentação: os alertas continuam sendo os da resolução 8.
+const resolucaoDoZoom = z => z >= 12 ? 8 : z >= 10 ? 7 : 6;
+const ordemNivel = { INFO: 0, ATENCAO: 1, EMERGENCIA: 2 };
+
 // desenharMapa sincroniza os marcadores com #dados-mapa, que o servidor
 // renderiza (já escapado) junto com os outros painéis.
 function desenharMapa() {
   if (!mapa) return;
-  const vistos = new Set();
+  const res = resolucaoDoZoom(mapa.getZoom()), areas = {};
   for (const el of $('dados-mapa').querySelectorAll('[data-alerta]')) {
-    const d = el.dataset, id = d.alerta, ativo = 'ativo' in d, cor = cores[d.nivel];
-    vistos.add(id);
-    const estilo = { color: cor, fillColor: cor, fillOpacity: ativo ? 0.35 : 0.08, weight: 2, opacity: ativo ? 1 : 0.3 };
-    let m = marcAlertas[id];
-    // O hexágono vem do ID do alerta, então não muda: só o estilo é atualizado.
-    if (!m) { m = marcAlertas[id] = L.polygon(JSON.parse(d.contorno), estilo).addTo(mapa).bindPopup(''); }
-    m.setStyle(estilo);
-    if (m.getPopup().getContent() !== el.innerHTML) m.setPopupContent(el.innerHTML);
+    const d = el.dataset, chave = res === 8 ? d.alerta : d['area' + res];
+    (areas[chave] ??= { contorno: res === 8 ? d.contorno : d['contorno' + res], els: [] }).els.push(el);
   }
-  for (const id in marcAlertas) if (!vistos.has(id)) { mapa.removeLayer(marcAlertas[id]); delete marcAlertas[id]; }
+  for (const chave in areas) {
+    const { contorno, els } = areas[chave];
+    // A área tem a cor do pior nível entre os alertas ativos; sem nenhum ativo, fica apagada.
+    const ativos = els.filter(el => 'ativo' in el.dataset), ativo = ativos.length > 0;
+    const nivel = (ativo ? ativos : els).map(el => el.dataset.nivel).reduce((x, y) => ordemNivel[y] > ordemNivel[x] ? y : x);
+    const cor = cores[nivel], estilo = { color: cor, fillColor: cor, fillOpacity: ativo ? 0.35 : 0.08, weight: 2, opacity: ativo ? 1 : 0.3 };
+    const html = els.length === 1 ? els[0].innerHTML
+      : `<b>${els.length} alertas nesta região</b> (${ativos.length} ${ativos.length === 1 ? 'ativo' : 'ativos'}) · aproxime o mapa para separá-los<hr>`
+        + els.map(el => el.innerHTML).join('<hr>');
+    let m = marcAlertas[chave];
+    // O hexágono vem do ID, então não muda: só o estilo e o popup são atualizados.
+    if (!m) { m = marcAlertas[chave] = L.polygon(JSON.parse(contorno), estilo).addTo(mapa).bindPopup('', { maxHeight: 320 }); }
+    m.setStyle(estilo);
+    if (m.getPopup().getContent() !== html) m.setPopupContent(html);
+  }
+  for (const chave in marcAlertas) if (!(chave in areas)) { mapa.removeLayer(marcAlertas[chave]); delete marcAlertas[chave]; }
 
   for (const el of $('dados-mapa').querySelectorAll('[data-sensor]')) {
     const d = el.dataset, intens = Math.min(+d.chuva / 50, 1);
@@ -231,13 +247,16 @@ function desenharMapa() {
 }
 desenharMapa();
 document.addEventListener('htmx:after:swap', desenharMapa);
+if (mapa) mapa.on('zoomend', desenharMapa);
 
 // Clicar num alerta da lista leva o mapa até ele e abre o popup.
+// O zoom mínimo de 15 garante que o alerta esteja no próprio hexágono, e não
+// junto com os vizinhos, quando o popup abrir.
 $('feed').addEventListener('click', e => {
-  const cartao = e.target.closest('.alerta'), m = cartao && marcAlertas[cartao.id.slice('alerta-'.length)];
-  if (!mapa || !m || e.target.closest('button')) return;
-  mapa.once('moveend', () => m.openPopup());
-  mapa.flyTo(m.getBounds().getCenter(), Math.max(mapa.getZoom(), 15));
+  const cartao = e.target.closest('.alerta'), id = cartao && cartao.id.slice('alerta-'.length), dados = id && $('mapa-' + id);
+  if (!mapa || !dados || e.target.closest('button')) return;
+  mapa.once('moveend', () => marcAlertas[id]?.openPopup());
+  mapa.flyTo(L.polygon(JSON.parse(dados.dataset.contorno)).getBounds().getCenter(), Math.max(mapa.getZoom(), 15));
 });
 const semConexao = () => { $('conexao').textContent = '⚠ este servidor não está respondendo'; };
 document.addEventListener('htmx:error', semConexao);
@@ -331,7 +350,7 @@ document.addEventListener('htmx:response:error', semConexao);
 {{/* Dados do mapa, lidos por desenharMapa: um elemento por alerta (com o
 conteúdo do popup) e um por pluviômetro (com o conteúdo da dica). */}}
 {{define "mapa"}}
-  {{range .Alertas}}<div id="mapa-{{.ID}}" data-alerta="{{.ID}}" data-contorno="{{json .Contorno}}" data-nivel="{{.Nivel}}"{{if .Ativo}} data-ativo{{end}}>
+  {{range .Alertas}}<div id="mapa-{{.ID}}" data-alerta="{{.ID}}" data-contorno="{{json .Contorno}}"{{with area .ID 7}} data-area7="{{.ID}}" data-contorno7="{{json .Contorno}}"{{end}}{{with area .ID 6}} data-area6="{{.ID}}" data-contorno6="{{json .Contorno}}"{{end}} data-nivel="{{.Nivel}}"{{if .Ativo}} data-ativo{{end}}>
     <b>{{tipo .Tipo}}</b> · {{nivel .Nivel}} · credibilidade <b>{{pct .Score}}</b><br>{{situacao .}}<br>
     <span class="pequeno">{{range $i, $m := motivos .}}{{if $i}}<br>{{end}}{{$m}}{{end}}</span><br>
     <span class="pequeno">último relato {{haQuanto $.Agora .Atualizado}}</span></div>

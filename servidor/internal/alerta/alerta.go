@@ -99,8 +99,25 @@ func ChaveDe(lat, lng float64, t time.Time) string {
 // Contorno são os vértices [lat, lng] do hexágono do alerta, para o mapa.
 // Vem do ID, então não depende dos relatos.
 func (a *Alerta) Contorno() [][2]float64 {
-	celula, _, _ := strings.Cut(a.ID, "_")
-	b, err := h3.CellFromString(celula).Boundary()
+	_, vs := CelulaPai(a.ID, ResolucaoCelula)
+	return vs
+}
+
+// CelulaPai é a célula de resolução res (menor ou igual à ResolucaoCelula)
+// que contém o hexágono do alerta id, com o contorno dela. O painel usa para
+// juntar alertas vizinhos quando o mapa se afasta; não muda o ID nem o
+// estado replicado.
+func CelulaPai(id string, res int) (string, [][2]float64) {
+	celula, _, _ := strings.Cut(id, "_")
+	c, err := h3.CellFromString(celula).Parent(res)
+	if err != nil {
+		return "", nil
+	}
+	return c.String(), contornoDe(c)
+}
+
+func contornoDe(c h3.Cell) [][2]float64 {
+	b, err := c.Boundary()
 	if err != nil {
 		return nil
 	}

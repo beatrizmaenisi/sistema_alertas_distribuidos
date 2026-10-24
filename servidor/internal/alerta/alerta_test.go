@@ -103,6 +103,33 @@ func TestContornoEhOHexagonoDaChave(t *testing.T) {
 	}
 }
 
+// Afastando o mapa, alertas vizinhos se juntam no hexágono pai; na
+// resolução do ID, o "pai" é o próprio hexágono.
+func TestCelulaPai(t *testing.T) {
+	t0 := time.Date(2022, 2, 15, 18, 0, 0, 0, time.UTC)
+	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5044, Lng: -43.171, Momento: t0})
+	if c, _ := CelulaPai(a.ID, ResolucaoCelula); c+"_20220215" != a.ID {
+		t.Fatalf("na resolução do ID o pai deveria ser o próprio hexágono, veio %s para %s", c, a.ID)
+	}
+	p7, vs := CelulaPai(a.ID, 7)
+	if len(vs) != 6 || p7 == "" {
+		t.Fatalf("esperava um hexágono pai na resolução 7, veio %q %v", p7, vs)
+	}
+	// Dois hexágonos vizinhos: um com o mesmo pai, outro não (vizinhos podem
+	// cair em pais diferentes, como dois quadrados dos lados de uma borda).
+	mesmoPai := Novo(Relato{Dispositivo: "d2", Tipo: "ALAGAMENTO", Lat: -22.5031, Lng: -43.1618, Momento: t0})
+	outroPai := Novo(Relato{Dispositivo: "d3", Tipo: "ALAGAMENTO", Lat: -22.5058, Lng: -43.1803, Momento: t0})
+	if mesmoPai.ID == a.ID || outroPai.ID == a.ID {
+		t.Fatal("o teste precisa de alertas em hexágonos diferentes")
+	}
+	if p, _ := CelulaPai(mesmoPai.ID, 7); p != p7 {
+		t.Fatalf("esperava o mesmo pai na resolução 7: %s != %s", p, p7)
+	}
+	if p, _ := CelulaPai(outroPai.ID, 7); p == p7 {
+		t.Fatalf("esperava outro pai na resolução 7, veio o mesmo %s", p)
+	}
+}
+
 func TestStatusExpira(t *testing.T) {
 	t0 := time.Date(2022, 2, 15, 18, 0, 0, 0, time.UTC)
 	a := Novo(Relato{Dispositivo: "d1", Tipo: "ALAGAMENTO", Lat: -22.5, Lng: -43.1, Momento: t0})

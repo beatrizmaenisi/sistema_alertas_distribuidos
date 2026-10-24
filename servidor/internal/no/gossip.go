@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -142,8 +143,14 @@ func (n *No) rodada(ctx context.Context, peer string) (string, error) {
 		}
 	}
 	if ra+rl+len(envio.Alertas)+len(envio.Leituras) > 0 {
-		n.registrar(false, "gossip ⇄ %s: recebeu %d alerta(s), %d leitura(s) | enviou %d alerta(s), %d leitura(s)",
-			resp.De, ra, rl, len(envio.Alertas), len(envio.Leituras))
+		var partes []string
+		if ra+rl > 0 {
+			partes = append(partes, "recebeu "+contagem(ra, rl))
+		}
+		if len(envio.Alertas)+len(envio.Leituras) > 0 {
+			partes = append(partes, "enviou "+contagem(len(envio.Alertas), len(envio.Leituras)))
+		}
+		n.registrar(false, "Sincronizado com %s (gossip): %s.", resp.De, strings.Join(partes, "; "))
 	}
 	return resp.De, nil
 }
@@ -207,9 +214,9 @@ func (n *No) marcarPeer(url, id string, err error) {
 	// só registra as transições, para não encher o log a cada rodada
 	switch {
 	case err != nil && falhasAntes == 0:
-		n.registrar(true, "gossip → %s FALHOU: %v", nome, err)
+		n.registrar(true, "%s não respondeu; parece estar fora do ar. Os alertas continuam funcionando aqui e serão repassados quando ele voltar. [%v]", nome, err)
 	case err == nil && falhasAntes > 0:
-		n.registrar(false, "gossip → %s voltou após %d falha(s)", id, falhasAntes)
+		n.registrar(false, "%s voltou a responder após %s sem sucesso e vai receber o que perdeu.", id, plural(falhasAntes, "tentativa", "tentativas"))
 	}
 }
 
@@ -241,4 +248,24 @@ func (n *No) Executar(ctx context.Context) {
 		n.rodadaGeral(ctx)
 		n.podar()
 	}
+}
+
+// contagem descreve um lote de gossip para o log, ex.: "1 alerta e 3 leituras".
+func contagem(alertas, leituras int) string {
+	switch {
+	case alertas > 0 && leituras > 0:
+		return plural(alertas, "alerta", "alertas") + " e " + plural(leituras, "leitura", "leituras")
+	case alertas > 0:
+		return plural(alertas, "alerta", "alertas")
+	case leituras > 0:
+		return plural(leituras, "leitura", "leituras")
+	}
+	return "nada"
+}
+
+func plural(n int, um, varios string) string {
+	if n == 1 {
+		return "1 " + um
+	}
+	return fmt.Sprintf("%d %s", n, varios)
 }

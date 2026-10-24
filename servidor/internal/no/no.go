@@ -34,12 +34,18 @@ type Config struct {
 }
 
 // TiposRelato são os tipos de ocorrência aceitos (vertente SmartCity:
-// monitoramento pluviométrico urbano).
-var TiposRelato = map[string]bool{
-	"ALAGAMENTO":   true,
-	"DESLIZAMENTO": true,
-	"CHUVA_FORTE":  true,
-	"QUEDA_ARVORE": true,
+// monitoramento pluviométrico urbano), com o nome usado nas mensagens.
+var TiposRelato = map[string]string{
+	"ALAGAMENTO":   "alagamento",
+	"DESLIZAMENTO": "deslizamento",
+	"CHUVA_FORTE":  "chuva forte",
+	"QUEDA_ARVORE": "queda de árvore",
+}
+
+var nomesNivel = map[string]string{"INFO": "informativo", "ATENCAO": "atenção", "EMERGENCIA": "emergência"}
+
+var nomesStatus = map[alerta.Status]string{
+	alerta.Ativo: "ativo", alerta.Reconhecido: "reconhecido", alerta.Resolvido: "resolvido",
 }
 
 type infoPeer struct {
@@ -134,7 +140,7 @@ func (n *No) disparar() {
 var ErrRelatoInvalido = errors.New("relato inválido")
 
 func (n *No) AdicionarRelato(r alerta.Relato) (VisaoAlerta, error) {
-	if r.Dispositivo == "" || !TiposRelato[r.Tipo] ||
+	if r.Dispositivo == "" || TiposRelato[r.Tipo] == "" ||
 		r.Lat < -90 || r.Lat > 90 || r.Lng < -180 || r.Lng > 180 {
 		return VisaoAlerta{}, ErrRelatoInvalido
 	}
@@ -152,7 +158,8 @@ func (n *No) AdicionarRelato(r alerta.Relato) (VisaoAlerta, error) {
 	v := n.visao(n.alertas[novo.ID], n.listaRelatos(), n.listaLeituras(), time.Now())
 	n.mu.Unlock()
 
-	n.registrar(false, "relato %s de %s… → alerta %s (score %.2f)", r.Tipo, r.Dispositivo[:min(8, len(r.Dispositivo))], v.ID, v.Score)
+	n.registrar(false, "Relato de %s recebido de um usuário (%s…). Credibilidade do alerta agora: %.0f%% (%s). [alerta %s]",
+		TiposRelato[r.Tipo], r.Dispositivo[:min(8, len(r.Dispositivo))], v.Score*100, nomesNivel[v.Nivel], v.ID)
 	n.disparar()
 	return v, nil
 }
@@ -188,7 +195,8 @@ func (n *No) AdicionarLeitura(l alerta.Leitura) error {
 	n.mu.Unlock()
 
 	if disparou != nil {
-		n.registrar(false, "estação %s: %.1f mm/h ≥ %.0f → alerta %s", l.Sensor, l.ChuvaMMh, n.cfg.LimiarSensor, disparou.ID)
+		n.registrar(false, "Pluviômetro %s mediu %.1f mm/h (limite: %.0f mm/h) e abriu sozinho um alerta de chuva forte. [alerta %s]",
+			l.Sensor, l.ChuvaMMh, n.cfg.LimiarSensor, disparou.ID)
 	}
 	n.disparar()
 	return nil
@@ -207,7 +215,7 @@ func (n *No) MudarStatus(id string, s alerta.Status) error {
 	if !ok {
 		return fmt.Errorf("alerta %s não encontrado", id)
 	}
-	n.registrar(false, "alerta %s marcado como %s", id, s)
+	n.registrar(false, "Alerta marcado como %s; a mudança será repassada aos outros servidores. [alerta %s]", nomesStatus[s], id)
 	n.disparar()
 	return nil
 }
@@ -297,6 +305,11 @@ type VisaoAlerta struct {
 	Atualizado  time.Time          `json:"atualizado_em"`
 	Expira      time.Time          `json:"expira"`
 	Hash        string             `json:"hash"`
+}
+
+// Ativo diz se o alerta ainda vale (não foi resolvido nem expirou).
+func (v VisaoAlerta) Ativo() bool {
+	return v.Status == alerta.Ativo || v.Status == alerta.Reconhecido
 }
 
 func (n *No) visao(a *alerta.Alerta, vizinhos []alerta.Relato, leituras []alerta.Leitura, agora time.Time) VisaoAlerta {

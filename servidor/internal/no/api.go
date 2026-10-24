@@ -3,7 +3,6 @@ package no
 import (
 	"bytes"
 	"crypto/sha256"
-	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,15 +15,9 @@ import (
 	"alertas/internal/alerta"
 )
 
-//go:embed web/index.html
-var paginaPainel []byte
-
 func (n *No) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(paginaPainel)
-	})
+	n.rotasPainel(mux)
 	mux.HandleFunc("GET /api/estado", n.handleEstado)
 	mux.HandleFunc("GET /api/alertas", n.handleAlertas)
 	mux.HandleFunc("POST /api/relatos", n.handleRelato)
@@ -136,7 +129,7 @@ func (n *No) handleAlertas(w http.ResponseWriter, r *http.Request) {
 
 	out := []VisaoAlerta{}
 	for _, v := range n.Alertas(time.Now()) {
-		if q.Get("todos") != "1" && v.Status != alerta.Ativo && v.Status != alerta.Reconhecido {
+		if q.Get("todos") != "1" && !v.Ativo() {
 			continue
 		}
 		if filtrarLocal && alerta.DistanciaKm(lat, lng, v.Lat, v.Lng) > raio {
@@ -169,7 +162,7 @@ type visaoPeer struct {
 	Falhas   int       `json:"falhas_seguidas"`
 }
 
-func (n *No) handleEstado(w http.ResponseWriter, r *http.Request) {
+func (n *No) listaPeers() []visaoPeer {
 	n.mu.Lock()
 	peers := make([]visaoPeer, 0, len(n.peers))
 	for _, p := range n.peers {
@@ -180,13 +173,16 @@ func (n *No) handleEstado(w http.ResponseWriter, r *http.Request) {
 	}
 	n.mu.Unlock()
 	sort.Slice(peers, func(i, j int) bool { return peers[i].URL < peers[j].URL })
+	return peers
+}
 
+func (n *No) handleEstado(w http.ResponseWriter, r *http.Request) {
 	responder(w, http.StatusOK, map[string]any{
 		"no":            n.cfg.ID,
 		"inicio":        n.inicio,
 		"versao_modelo": n.cfg.Modelo.Versao,
 		"hash_estado":   n.HashEstado(),
-		"peers":         peers,
+		"peers":         n.listaPeers(),
 		"alertas":       n.Alertas(time.Now()),
 		"estacoes":      n.Estacoes(),
 		"eventos":       n.Eventos(),
@@ -208,7 +204,7 @@ func (n *No) handlePush(w http.ResponseWriter, r *http.Request) {
 	}
 	a, l := n.aplicar(p)
 	if a+l > 0 {
-		n.registrar(false, "gossip ← %s: aplicou %d alerta(s), %d leitura(s)", p.De, a, l)
+		n.registrar(false, "Recebeu novidades de %s (gossip): %s.", p.De, contagem(a, l))
 	}
 	responder(w, http.StatusOK, map[string]int{"alertas": a, "leituras": l})
 }

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alertas Distribuídos</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    --fundo: #f5f6f8; --cartao: #fff; --texto: #1d2129; --suave: #6b7280; --borda: #d9dde3;
+    --info: #3b82f6; --atencao: #d97706; --emergencia: #dc2626; --ok: #16a34a; --sensor: #0e7490;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: var(--fundo); color: var(--texto); }
+  header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; padding: 12px 20px;
+           background: var(--texto); color: #fff; }
+  header h1 { margin: 0; font-size: 18px; }
+  header .meta { color: #c7ccd4; font-size: 13px; }
+  header code { color: #fff; background: #ffffff22; padding: 1px 6px; border-radius: 4px; }
+  main { display: grid; grid-template-columns: 220px minmax(0, 1fr) 300px; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  .cartao { background: var(--cartao); border: 1px solid var(--borda); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+  .no .topo { display: flex; justify-content: space-between; font-weight: 600; }
+  .on { color: var(--ok); font-size: 11px; font-weight: 600; }
+  .off { color: var(--emergencia); font-size: 11px; font-weight: 600; }
+  .no.offline { opacity: .55; }
+  .pequeno { color: var(--suave); font-size: 12px; }
+  #mapa { height: 420px; border-radius: 8px; border: 1px solid var(--borda); margin-bottom: 8px; }
+  .barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; font-size: 13px; }
+  select, button { font: inherit; padding: 4px 8px; border: 1px solid var(--borda); border-radius: 6px; background: #fff; cursor: pointer; }
+  .alerta { border-left: 4px solid var(--info); }
+  .alerta.ATENCAO { border-left-color: var(--atencao); }
+  .alerta.EMERGENCIA { border-left-color: var(--emergencia); }
+  .alerta.inativo { opacity: .5; }
+  .alerta .topo { display: flex; justify-content: space-between; gap: 8px; }
+  .nivel { font-weight: 700; }
+  .INFO .nivel { color: var(--info); } .ATENCAO .nivel { color: var(--atencao); } .EMERGENCIA .nivel { color: var(--emergencia); }
+  .score { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .chip { font-size: 11px; background: #eef0f3; border-radius: 10px; padding: 1px 8px; }
+  .chip.sensor { background: #cffafe; color: var(--sensor); }
+  #logs { font: 12px/1.5 ui-monospace, monospace; max-height: 640px; overflow-y: auto; }
+  #logs div { border-bottom: 1px solid #eef0f3; padding: 2px 0; }
+  #logs .erro { color: var(--emergencia); }
+  #aviso { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--texto); color: #fff;
+           padding: 8px 14px; border-radius: 6px; display: none; }
+  .vazio { color: var(--suave); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Alertas Distribuídos · <span id="no-id">…</span></h1>
+  <span class="meta">estado <code id="hash">…</code></span>
+  <span class="meta">modelo <code id="modelo">…</code></span>
+  <span class="meta" id="conexao"></span>
+</header>
+<main>
+  <section>
+    <h2>Nós do cluster</h2>
+    <div id="nos"></div>
+    <h2>Estações (sensores)</h2>
+    <div id="estacoes" class="cartao pequeno"></div>
+  </section>
+  <section>
+    <div id="mapa"></div>
+    <div class="barra">
+      Clique no mapa para relatar:
+      <select id="tipo">
+        <option>ALAGAMENTO</option><option>DESLIZAMENTO</option><option>CHUVA_FORTE</option><option>QUEDA_ARVORE</option>
+      </select>
+      <label><input type="checkbox" id="mesmo"> mesmo usuário</label>
+    </div>
+    <h2>Feed de alertas</h2>
+    <div id="feed"></div>
+  </section>
+  <section>
+    <h2>Logs</h2>
+    <div id="logs" class="cartao"></div>
+  </section>
+</main>
+<div id="aviso"></div>
+<script>
+const cores = { INFO: '#3b82f6', ATENCAO: '#d97706', EMERGENCIA: '#dc2626' };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hora = t => new Date(t).toLocaleTimeString('pt-BR');
+const $ = id => document.getElementById(id);
+
+function aviso(msg) {
+  const el = $('aviso');
+  el.textContent = msg; el.style.display = 'block';
+  clearTimeout(aviso.t); aviso.t = setTimeout(() => el.style.display = 'none', 3000);
+}
+
+let autorFixo = 'painel-' + Math.random().toString(36).slice(2);
+const novoAutor = () => $('mesmo').checked ? autorFixo : 'painel-' + Math.random().toString(36).slice(2);
+
+let mapa = null, marcAlertas = {}, marcEstacoes = {};
+if (window.L) {
+  mapa = L.map('mapa').setView([-22.51, -43.18], 12); // Petrópolis
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18, attribution: '&copy; OpenStreetMap'
+  }).addTo(mapa);
+  mapa.on('click', async e => {
+    const corpo = { autor_id: novoAutor(), tipo: $('tipo').value,
+                    geolocalizacao: { lat: e.latlng.lat, lng: e.latlng.lng } };
+    try {
+      const r = await fetch('/api/relatos', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corpo) });
+      const v = await r.json();
+      if (!r.ok) throw new Error(v.erro);
+      aviso(`Relato enviado → alerta ${v.id_alerta} · score ${v.score_credibilidade.toFixed(3)} (${v.nivel})`);
+      atualizar();
+    } catch (err) { aviso('Erro: ' + err.message); }
+  });
+} else {
+  $('mapa').innerHTML = '<p class="vazio" style="padding:12px">Mapa indisponível (sem internet para carregar o Leaflet).</p>';
+}
+
+async function resolver(id) {
+  await fetch(`/api/alertas/${encodeURIComponent(id)}/status`, { method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ status: 'RESOLVIDO' }) });
+  atualizar();
+}
+
+function popupAlerta(a) {
+  const f = a.features;
+  return `<b>${esc(a.tipo)}</b> · ${esc(a.nivel)}<br>score <b>${a.score_credibilidade.toFixed(3)}</b> (${esc(a.versao_modelo)})<br>
+    usuários: ${a.n_usuarios} · sensores: ${a.sensores.length}<br>
+    chuva máx.: ${f.chuva_max_mm_h.toFixed(1)} mm/h · dispersão: ${f.dispersao_km.toFixed(2)} km<br>
+    nós de origem: ${esc(a.nos_origem.join(', '))}<br><span class="pequeno">${esc(a.id_alerta)} · hash ${esc(a.hash)}</span>`;
+}
+
+function desenharMapa(est) {
+  if (!mapa) return;
+  const vistos = new Set();
+  for (const a of est.alertas) {
+    vistos.add(a.id_alerta);
+    const ativo = a.status === 'ATIVO' || a.status === 'RECONHECIDO';
+    const estilo = { color: cores[a.nivel], fillColor: cores[a.nivel], fillOpacity: ativo ? 0.35 : 0.08, weight: 2, opacity: ativo ? 1 : 0.3 };
+    let m = marcAlertas[a.id_alerta];
+    if (!m) { m = marcAlertas[a.id_alerta] = L.circle([a.lat, a.lng], { radius: 400, ...estilo }).addTo(mapa).bindPopup(''); }
+    m.setLatLng([a.lat, a.lng]).setStyle(estilo).setPopupContent(popupAlerta(a));
+  }
+  for (const id in marcAlertas) if (!vistos.has(id)) { mapa.removeLayer(marcAlertas[id]); delete marcAlertas[id]; }
+
+  for (const e of est.estacoes) {
+    const intens = Math.min(e.chuva_mm_h / 50, 1);
+    const estilo = { radius: 3 + intens * 4, color: '#0e7490', weight: 1, fillColor: '#0e7490', fillOpacity: 0.25 + intens * 0.7 };
+    let m = marcEstacoes[e.id_sensor];
+    if (!m) { m = marcEstacoes[e.id_sensor] = L.circleMarker([e.lat, e.lng], estilo).addTo(mapa).bindTooltip(''); }
+    m.setStyle(estilo).setRadius(estilo.radius).setTooltipContent(`${esc(e.id_sensor)}: ${e.chuva_mm_h.toFixed(1)} mm/h`);
+  }
+}
+
+function desenhar(est) {
+  $('no-id').textContent = est.no;
+  $('hash').textContent = est.hash_estado;
+  $('modelo').textContent = est.versao_modelo;
+  $('conexao').textContent = '';
+
+  const ativos = est.alertas.filter(a => a.status === 'ATIVO' || a.status === 'RECONHECIDO').length;
+  let nos = `<div class="cartao no"><div class="topo">${esc(est.no)} <span class="on">ESTE NÓ</span></div>
+    <div class="pequeno">alertas ativos: ${ativos}<br>leituras de ${est.estacoes.length} estação(ões)<br>
+    no ar desde ${hora(est.inicio)}</div></div>`;
+  for (const p of est.peers) {
+    nos += `<div class="cartao no ${p.online ? '' : 'offline'}"><div class="topo">${esc(p.id || '?')}
+      <span class="${p.online ? 'on' : 'off'}">${p.online ? 'ONLINE' : 'OFFLINE'}</span></div>
+      <div class="pequeno">${esc(p.url)}<br>${p.ultimo_ok && !p.ultimo_ok.startsWith('0001') ? 'último gossip ' + hora(p.ultimo_ok) : 'nunca contatado'}
+      ${p.falhas_seguidas ? '<br>falhas seguidas: ' + p.falhas_seguidas : ''}</div></div>`;
+  }
+  $('nos').innerHTML = nos;
+
+  const chuvosas = est.estacoes.filter(e => e.chuva_mm_h > 0).sort((a, b) => b.chuva_mm_h - a.chuva_mm_h);
+  $('estacoes').innerHTML = est.estacoes.length === 0 ? '<span class="vazio">nenhuma leitura</span>' :
+    `${est.estacoes.length} estações · ${chuvosas.length} com chuva` +
+    chuvosas.slice(0, 8).map(e => `<br>${esc(e.id_sensor)}: <b>${e.chuva_mm_h.toFixed(1)}</b> mm/h`).join('');
+
+  $('feed').innerHTML = est.alertas.length === 0 ? '<p class="vazio">Nenhum alerta.</p>' : est.alertas.map(a => {
+    const ativo = a.status === 'ATIVO' || a.status === 'RECONHECIDO';
+    return `<div class="cartao alerta ${a.nivel} ${ativo ? '' : 'inativo'}">
+      <div class="topo"><span><span class="nivel">${esc(a.nivel)}</span> ${esc(a.tipo)} · ${hora(a.atualizado_em)}</span>
+        <span class="score">${a.score_credibilidade.toFixed(3)}</span></div>
+      <div class="pequeno">${esc(a.id_alerta)} · ${esc(a.status)} · hash ${esc(a.hash)}
+        · chuva máx. ${a.features.chuva_max_mm_h.toFixed(1)} mm/h</div>
+      <div class="chips">
+        <span class="chip">${a.n_usuarios} usuário(s)</span>
+        ${a.sensores.map(s => `<span class="chip sensor">${esc(s)}</span>`).join('')}
+        ${a.nos_origem.map(n => `<span class="chip">via ${esc(n)}</span>`).join('')}
+        ${ativo ? `<button onclick="resolver('${esc(a.id_alerta)}')" style="margin-left:auto;font-size:11px;padding:1px 8px">resolver</button>` : ''}
+      </div>
+      ${a.comentarios.length ? `<div class="pequeno">“${a.comentarios.map(esc).join('” · “')}”</div>` : ''}
+    </div>`;
+  }).join('');
+
+  $('logs').innerHTML = est.eventos.slice().reverse().map(e =>
+    `<div class="${e.erro ? 'erro' : ''}">${hora(e.momento)} ${esc(e.texto)}</div>`).join('') || '<span class="vazio">sem eventos</span>';
+
+  desenharMapa(est);
+}
+
+async function atualizar() {
+  try {
+    const r = await fetch('/api/estado');
+    desenhar(await r.json());
+  } catch (err) {
+    $('conexao').textContent = '⚠ nó fora do ar';
+  }
+}
+atualizar();
+setInterval(atualizar, 1000);
+</script>
+</body>
+</html>

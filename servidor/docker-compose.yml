@@ -1,0 +1,33 @@
+# Três servidores regionais trocando estado por gossip.
+# Painéis: http://localhost:8081, :8082, :8083
+# Derrubar um nó: docker compose stop no2   |   voltar: docker compose start no2
+x-no: &no
+  build: .
+  image: alertas-no
+  restart: "no"
+  environment: &env
+    PORTA: "8080"
+    # MODELO: /modelo/modelo.json   # descomentar quando o modelo treinado existir
+
+services:
+  no1:
+    <<: *no
+    environment:
+      <<: *env
+      NO_ID: no1
+      PEERS: http://no2:8080,http://no3:8080
+    ports: ["8081:8080"]
+  no2:
+    <<: *no
+    environment:
+      <<: *env
+      NO_ID: no2
+      PEERS: http://no1:8080,http://no3:8080
+    ports: ["8082:8080"]
+  no3:
+    <<: *no
+    environment:
+      <<: *env
+      NO_ID: no3
+      PEERS: http://no1:8080,http://no2:8080
+    ports: ["8083:8080"]

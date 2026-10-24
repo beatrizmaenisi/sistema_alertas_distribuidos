@@ -15,12 +15,12 @@ from datetime import datetime, timedelta, timezone
 
 import h3
 
-RESOLUCAO_CELULA = 9  # mesma ResolucaoCelula do Go
+RESOLUCAO_CELULA = 8 
 FUSO_REFERENCIA = timezone(timedelta(hours=-3))  # BRT, sem horário de verão
 
 
 def chave_alerta(lat, lng, momento: datetime):
-    """ID do alerta: célula H3 + dia em Brasília, ex. 89a8a3c0e23ffff_20220215.
+    """ID do alerta: célula H3 + dia em Brasília, ex. 88a8a3c0e3fffff_20220215.
     momento precisa ter fuso (datetime "aware")."""
     celula = h3.latlng_to_cell(lat, lng, RESOLUCAO_CELULA)
     return f"{celula}_{momento.astimezone(FUSO_REFERENCIA):%Y%m%d}"

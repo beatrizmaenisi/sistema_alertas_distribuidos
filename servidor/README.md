@@ -63,8 +63,8 @@ treino/           exportação do modelo do scikit-learn para JSON; celula.py ag
 
 ### Estado replicado
 
-- **ID do alerta** = hexágono H3 de resolução 9 (~0,105 km², ~174 m de lado, ~350 m de ponta a ponta) + dia (horário de Brasília),
-  ex. `89a8a3c0e23ffff_20220215`. Relatos do mesmo evento recebidos por nós diferentes caem no mesmo
+- **ID do alerta** = hexágono H3 de resolução 8 (~0,74 km², ~460 m de lado) + dia (horário de Brasília),
+  ex. `88a8a3c0e3fffff_20220215`. Relatos do mesmo evento recebidos por nós diferentes caem no mesmo
   alerta sem coordenação. Hexágonos têm os 6 vizinhos à mesma distância e só 3 se encontram num
   vértice (contra 4 quadrados); o índice H3 é igual em Go e em Python (`treino/celula.py`).
 - **Relatos**: conjunto indexado pelo hash SHA-256 do dispositivo (LGPD). Merge = união;

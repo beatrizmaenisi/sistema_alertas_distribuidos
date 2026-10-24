@@ -12,6 +12,7 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js"></script>
 <script src="/js/htmx.min.js"></script>
 <script src="/js/h3-js.umd.js"></script>
+<script src="/js/deck.gl.min.js"></script>
 <style>
   :root {
     --fundo: #f5f6f8; --cartao: #fff; --texto: #1d2129; --suave: #6b7280; --borda: #d9dde3;
@@ -275,9 +276,9 @@ if (mapa) {
 }
 
 // Resolução H3 desenhada em cada zoom: de perto, um hexágono por alerta (a
-// resolução 9 do ID); de longe, os alertas vizinhos se juntam no hexágono pai.
-// É só apresentação: os alertas continuam sendo os da resolução 9.
-const resolucaoDoZoom = z => z >= 13 ? 9 : z >= 11 ? 8 : z >= 9 ? 7 : 6;
+// resolução 8 do ID); de longe, os alertas vizinhos se juntam no hexágono pai.
+// É só apresentação: os alertas continuam sendo os da resolução 8.
+const resolucaoDoZoom = z => z >= 11 ? 8 : z >= 9 ? 7 : 6;
 const ordemNivel = { INFO: 0, ATENCAO: 1, EMERGENCIA: 2 };
 
 // O servidor manda os contornos em [lat, lng]; o GeoJSON quer [lng, lat] e o anel fechado.
@@ -289,23 +290,33 @@ const centro = anel => {
   return [(Math.min(...lngs) + Math.max(...lngs)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
 };
 
-// Camadas do mapa: hexágonos dos alertas, o hexágono tracejado sob o mouse e os
-// pluviômetros. As cores e opacidades vêm das propriedades de cada feição; o
-// destaque do hexágono sob o mouse é um feature-state.
+// Camadas do mapa: hexágonos dos alertas (deck.gl), o hexágono tracejado sob o
+// mouse e os pluviômetros (MapLibre). Cada hexágono traz a cor e as opacidades;
+// o destaque do hexágono sob o mouse (sobMouse) aumenta o preenchimento e a borda.
+let sobreposicao = null, celulas = [];
+const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+function desenharHexagonos() {
+  sobreposicao.setProps({ layers: [new deck.H3HexagonLayer({
+    id: 'alertas', beforeId: 'fantasma-area', data: celulas, getHexagon: d => d.h3,
+    pickable: true, filled: true, stroked: true, extruded: false, lineWidthUnits: 'pixels',
+    getFillColor: d => [...d.cor, Math.round(255 * (d.opArea + (d.chave === sobMouse ? 0.2 : 0)))],
+    getLineColor: d => [...d.cor, Math.round(255 * (d.chave === sobMouse ? 1 : d.opBorda))],
+    getLineWidth: d => d.chave === sobMouse ? 4 : 2,
+    updateTriggers: { getFillColor: sobMouse, getLineColor: sobMouse, getLineWidth: sobMouse },
+  })] });
+}
 if (mapa) mapa.on('load', () => {
-  mapa.addSource('alertas', { type: 'geojson', data: colecao([]), promoteId: 'chave' });
   mapa.addSource('fantasma', { type: 'geojson', data: colecao([]) });
   mapa.addSource('estacoes', { type: 'geojson', data: colecao([]) });
-  const realcado = ['boolean', ['feature-state', 'realce'], false];
-  mapa.addLayer({ id: 'alertas-area', type: 'fill', source: 'alertas', paint: {
-    'fill-color': ['get', 'cor'], 'fill-opacity': ['case', realcado, ['+', ['get', 'opArea'], 0.2], ['get', 'opArea']] } });
-  mapa.addLayer({ id: 'alertas-borda', type: 'line', source: 'alertas', paint: {
-    'line-color': ['get', 'cor'], 'line-width': ['case', realcado, 4, 2], 'line-opacity': ['case', realcado, 1, ['get', 'opBorda']] } });
   mapa.addLayer({ id: 'fantasma-area', type: 'fill', source: 'fantasma', paint: { 'fill-color': '#475569', 'fill-opacity': 0.12 } });
   mapa.addLayer({ id: 'fantasma-borda', type: 'line', source: 'fantasma', paint: { 'line-color': '#475569', 'line-width': 2, 'line-dasharray': [2.5, 2.5] } });
   mapa.addLayer({ id: 'estacoes', type: 'circle', source: 'estacoes', paint: {
     'circle-radius': ['get', 'raio'], 'circle-color': '#475569', 'circle-opacity': ['get', 'op'],
     'circle-stroke-color': '#475569', 'circle-stroke-width': 1 } });
+  // Os hexágonos dos alertas são uma camada do deck.gl (H3HexagonLayer) intercalada
+  // com as do MapLibre, abaixo do hexágono tracejado e dos pluviômetros.
+  sobreposicao = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+  mapa.addControl(sobreposicao);
   mapaPronto = true;
   desenharMapa();
 });
@@ -319,7 +330,7 @@ let sobMouse = null, ultimoPonto = null, celulaFantasma = null;
 function sobPonteiro() {
   if (!mapaPronto) return;
   const p = ultimoPonto;
-  const chave = p && mapa.queryRenderedFeatures(mapa.project(p), { layers: ['alertas-area'] })[0]?.properties.chave || null;
+  const chave = p && sobreposicao.pickObject({ ...mapa.project(p), layerIds: ['alertas'] })?.object.chave || null;
   destacar(chave);
   const celula = p && !chave && window.h3 ? h3.latLngToCell(p.lat, p.lng, resolucaoDoZoom(mapa.getZoom())) : null;
   if (celula === celulaFantasma) return;
@@ -328,9 +339,8 @@ function sobPonteiro() {
 }
 function destacar(chave) {
   if (chave === sobMouse) return;
-  if (sobMouse in areasAtuais) mapa.setFeatureState({ source: 'alertas', id: sobMouse }, { realce: false });
   sobMouse = chave;
-  if (chave) mapa.setFeatureState({ source: 'alertas', id: chave }, { realce: true });
+  desenharHexagonos();
 }
 if (mapa) {
   mapa.on('mousemove', e => { ultimoPonto = e.lngLat; sobPonteiro(); });
@@ -358,8 +368,8 @@ function desenharMapa() {
   if (!mapaPronto) return;
   const res = resolucaoDoZoom(mapa.getZoom()), grupos = {};
   for (const el of $('dados-mapa').querySelectorAll('[data-alerta]')) {
-    const d = el.dataset, chave = res === 9 ? d.alerta : d['area' + res];
-    (grupos[chave] ??= { contorno: res === 9 ? d.contorno : d['contorno' + res], els: [] }).els.push(el);
+    const d = el.dataset, chave = res === 8 ? d.alerta : d['area' + res];
+    (grupos[chave] ??= { contorno: res === 8 ? d.contorno : d['contorno' + res], els: [] }).els.push(el);
   }
   const novas = {}, hexagonos = [];
   for (const chave in grupos) {
@@ -372,11 +382,12 @@ function desenharMapa() {
         + els.map(el => el.innerHTML).join('<hr>');
     const anel = anelGeoJSON(JSON.parse(contorno));
     novas[chave] = { html, centro: centro(anel) };
-    hexagonos.push(poligono(anel, { chave, cor: cores[nivel], opArea: ativo ? 0.35 : 0.08, opBorda: ativo ? 1 : 0.3 }));
+    hexagonos.push({ chave, h3: chave.split('_')[0], cor: rgb(cores[nivel]), opArea: ativo ? 0.35 : 0.08, opBorda: ativo ? 1 : 0.3 });
   }
   areasAtuais = novas;
-  mapa.getSource('alertas').setData(colecao(hexagonos));
+  celulas = hexagonos;
   if (sobMouse && !(sobMouse in novas)) sobMouse = null;
+  desenharHexagonos();
   if (popupChave) {
     const a = novas[popupChave];
     if (!a) popup.remove();
@@ -390,7 +401,7 @@ function desenharMapa() {
       properties: { raio: 3 + intens * 4, op: 0.25 + intens * 0.7, html: el.innerHTML } });
   }
   mapa.getSource('estacoes').setData(colecao(pontos));
-  // Os hexágonos novos só entram no queryRenderedFeatures depois de desenhados.
+  // Os hexágonos novos só podem ser consultados (pickObject) depois de desenhados.
   mapa.once('idle', sobPonteiro);
 }
 desenharMapa();
@@ -518,7 +529,7 @@ document.addEventListener('htmx:response:error', semConexao);
 {{/* Dados do mapa, lidos por desenharMapa: um elemento por alerta (com o
 conteúdo do popup) e um por pluviômetro (com o conteúdo da dica). */}}
 {{define "mapa"}}
-  {{range .Alertas}}<div id="mapa-{{.ID}}" data-alerta="{{.ID}}" data-contorno="{{json .Contorno}}"{{with area .ID 8}} data-area8="{{.ID}}" data-contorno8="{{json .Contorno}}"{{end}}{{with area .ID 7}} data-area7="{{.ID}}" data-contorno7="{{json .Contorno}}"{{end}}{{with area .ID 6}} data-area6="{{.ID}}" data-contorno6="{{json .Contorno}}"{{end}} data-nivel="{{.Nivel}}"{{if .Ativo}} data-ativo{{end}}>
+  {{range .Alertas}}<div id="mapa-{{.ID}}" data-alerta="{{.ID}}" data-contorno="{{json .Contorno}}"{{with area .ID 7}} data-area7="{{.ID}}" data-contorno7="{{json .Contorno}}"{{end}}{{with area .ID 6}} data-area6="{{.ID}}" data-contorno6="{{json .Contorno}}"{{end}} data-nivel="{{.Nivel}}"{{if .Ativo}} data-ativo{{end}}>
     <b>{{titulos .}}</b> · {{nivel .Nivel}} · credibilidade <b>{{pct .Score}}</b><br>{{situacao .}}<br>
     {{with mistura .}}<span class="pequeno">Relatos: {{.}}</span><br>{{end}}
     <span class="pequeno">{{range $i, $m := motivos .}}{{if $i}}<br>{{end}}{{$m}}{{end}}</span><br>

@@ -8,9 +8,10 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="htmx-config" content='{"noSwap": [204, 304, "4xx", "5xx"]}'>
 <title>Alertas Distribuídos</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js"></script>
 <script src="/js/htmx.min.js"></script>
+<script src="/js/h3-js.umd.js"></script>
 <style>
   :root {
     --fundo: #f5f6f8; --cartao: #fff; --texto: #1d2129; --suave: #6b7280; --borda: #d9dde3;
@@ -22,16 +23,16 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   body { margin: 0; overflow: hidden; font: 14px/1.45 system-ui, sans-serif; background: var(--fundo); color: var(--texto); }
 
   /* O mapa ocupa a tela toda e tudo o mais flutua sobre ele: o cabeçalho, a
-  barra de relato e os painéis (alertas, servidores, atividade), que o usuário
-  arrasta pelo título. As camadas não recebem cliques, só os próprios widgets,
-  então arrastar e clicar nos espaços vazios continua chegando ao mapa. */
+  barra de relato e os painéis (alertas à esquerda; servidores e atividade à
+  direita). As camadas não recebem cliques, só os próprios widgets, então
+  clicar nos espaços vazios continua chegando ao mapa. */
   #mapa { position: fixed; inset: var(--nav) 0 0 0; z-index: 0; }
-  #widgets { position: fixed; inset: var(--nav) 0 0 0; z-index: 1001; pointer-events: none; }
-  .flutuante { position: absolute; width: 330px; max-width: calc(100vw - 24px); }
-  .flutuante > summary { cursor: grab; touch-action: none; user-select: none; }
-  .flutuante.arrastando > summary { cursor: grabbing; }
-  .flutuante.arrastando { box-shadow: 0 10px 30px #00000040; }
+  #widgets { position: fixed; inset: var(--nav) 0 0 0; z-index: 1001; pointer-events: none;
+             display: flex; justify-content: space-between; align-items: flex-start; padding: 12px; }
+  .coluna { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+  .flutuante { width: 330px; max-width: calc(100vw - 24px); }
   .flutuante .corpo { max-height: calc(100dvh - 130px); overflow-y: auto; }
+  .coluna .flutuante .corpo { max-height: calc(50dvh - 110px); }
   #w-servidores { width: 280px; }
   #w-atividade { width: 320px; }
   #sobre { position: fixed; inset: var(--nav) 0 0 0; z-index: 1000; pointer-events: none; display: grid; gap: 12px; padding: 12px 12px 26px;
@@ -123,15 +124,19 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   #aviso.mostrar { display: block; animation: sumir .4s ease 5s forwards; }
   @keyframes sumir { to { opacity: 0; visibility: hidden; } }
   .vazio { color: var(--suave); font-style: italic; }
+  .maplibregl-popup-content { max-height: 320px; overflow-y: auto; font: 13px/1.45 system-ui, sans-serif; padding: 10px 14px; }
+  .dica-pluviometro { pointer-events: none; }
+  .dica-pluviometro .maplibregl-popup-content { padding: 4px 8px; font-size: 12px; }
   @media (max-width: 900px) {
     :root { --alt: 30dvh; }
     #mapa, #sobre { inset: var(--nav) 0 var(--alt) 0; }
     #widgets { inset: auto 0 0 0; max-height: var(--alt); overflow-y: auto; pointer-events: auto; background: var(--fundo);
-               border-top: 1px solid var(--borda); display: flex; flex-direction: column; gap: 8px; padding: 8px; }
-    .flutuante, #w-servidores, #w-atividade { position: static; width: auto; max-width: none; }
-    .flutuante > summary { cursor: pointer; touch-action: auto; }
+               border-top: 1px solid var(--borda); display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 8px; }
+    .coluna { display: contents; }
+    .flutuante, #w-servidores, #w-atividade { width: auto; max-width: none; }
+    .flutuante .corpo, .coluna .flutuante .corpo { max-height: none; }
     #sobre { grid-template-columns: minmax(0, 1fr); grid-template-areas: "." "barra"; }
-    .leaflet-control-zoom, .legenda, .dica, #reorganizar { display: none; }
+    .maplibregl-ctrl-group:has(.maplibregl-ctrl-zoom-in), .legenda, .dica { display: none; }
     .cabecalho { padding: 0 8px 0 12px; }
     #topo .extra { display: none; }
   }
@@ -142,7 +147,6 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
 <div id="mapa" hx-sync="queue all"></div>
 <nav class="cabecalho">
   <header id="topo">{{template "topo" .}}</header>
-  <button type="button" id="reorganizar" title="Voltar os painéis para o lugar original" aria-label="Reorganizar painéis">⟲</button>
   <button type="button" id="abrir-ajuda" title="Como funciona este painel?" aria-label="Como funciona este painel?">?</button>
 </nav>
 <div id="widgets">
@@ -152,6 +156,7 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
       <div id="feed">{{template "feed" .}}</div>
     </div>
   </details>
+  <div class="coluna">
   <details class="widget flutuante" id="w-servidores" open>
     <summary><h2>Servidores</h2><span class="info" title="Cada servidor guarda uma cópia completa dos alertas.">ⓘ</span></summary>
     <div class="corpo">
@@ -166,6 +171,7 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
       <div id="logs">{{template "logs" .}}</div>
     </div>
   </details>
+  </div>
 </div>
 <div id="sobre">
   <div class="widget barra">
@@ -198,7 +204,9 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   <ul>
     <li><b>Cores:</b> azul = informativo (abaixo de 40%), laranja = atenção (40% a 69%), vermelho = emergência (70% ou mais).</li>
     <li><b>Círculos cinza:</b> pluviômetros; quanto mais escuro, mais chuva.</li>
-    <li><b>Hexágonos:</b> a área de um alerta; afastando o mapa, os vizinhos se juntam numa região maior.</li>
+    <li><b>Hexágonos:</b> a área de um alerta; afastando o mapa, os vizinhos se juntam numa região maior.
+      O hexágono tracejado sob o mouse é a área em que um relato seu cairia.</li>
+    <li><b>Botão de localização e ponto azul:</b> a sua localização, se você permitir o acesso ao GPS.</li>
     <li><b>Código dos dados:</b> se for igual em todos os servidores, eles estão sincronizados.</li>
   </ul>
   <form method="dialog"><button>Fechar</button></form>
@@ -216,132 +224,187 @@ const estreita = matchMedia('(max-width: 900px)');
 // Em telas estreitas os widgets começam recolhidos, para o mapa aparecer.
 if (estreita.matches) for (const d of document.querySelectorAll('details.widget')) d.open = false;
 
-// Painéis arrastáveis: cada um é movido pelo título, e a posição fica guardada
-// no navegador. Sem posição guardada, usa o lugar original.
-const widgets = [...document.querySelectorAll('.flutuante')], chavePos = 'painel-posicoes';
-const lerPos = () => { try { return JSON.parse(localStorage.getItem(chavePos)) || {}; } catch { return {}; } };
-const gravarPos = pos => { try { localStorage.setItem(chavePos, JSON.stringify(pos)); } catch {} };
-const limitar = (w, x, y) => {
-  const area = $('widgets'), larg = area.clientWidth, alt = area.clientHeight;
-  return [Math.max(0, Math.min(x, larg - Math.min(w.offsetWidth, larg))), Math.max(0, Math.min(y, alt - Math.min(w.offsetHeight, alt)))];
-};
-const mover = (w, x, y) => { [x, y] = limitar(w, x, y); w.style.left = x + 'px'; w.style.top = y + 'px'; return [x, y]; };
-function posicionar(guardadas) {
-  if (estreita.matches) return;
-  const alertas = $('w-alertas'), servidores = $('w-servidores'), atividade = $('w-atividade');
-  const padrao = {
-    'w-alertas': [12, 12],
-    'w-servidores': [$('widgets').clientWidth - servidores.offsetWidth - 12, 12],
-  };
-  for (const w of [alertas, servidores]) mover(w, ...(guardadas[w.id] ?? padrao[w.id]));
-  mover(atividade, ...(guardadas['w-atividade'] ?? [$('widgets').clientWidth - atividade.offsetWidth - 12, servidores.offsetTop + servidores.offsetHeight + 12]));
-}
-posicionar(lerPos());
-addEventListener('resize', () => posicionar(lerPos()));
-let camada = 1001;
-for (const w of widgets) {
-  const titulo = w.querySelector('summary');
-  w.addEventListener('pointerdown', () => { w.style.zIndex = ++camada; });
-  // Abrir ou fechar muda a altura: puxa o painel de volta para dentro da tela.
-  w.addEventListener('toggle', () => { if (!estreita.matches) mover(w, w.offsetLeft, w.offsetTop); });
-  titulo.addEventListener('pointerdown', e => {
-    if (estreita.matches || e.button !== 0) return;
-    const x0 = e.clientX, y0 = e.clientY, l0 = w.offsetLeft, t0 = w.offsetTop;
-    let arrastou = false;
-    titulo.setPointerCapture(e.pointerId);
-    const move = ev => {
-      if (!arrastou && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
-      arrastou = true; w.classList.add('arrastando');
-      mover(w, l0 + ev.clientX - x0, t0 + ev.clientY - y0);
-    };
-    const fim = () => {
-      titulo.removeEventListener('pointermove', move); titulo.removeEventListener('pointerup', fim); titulo.removeEventListener('pointercancel', fim);
-      w.classList.remove('arrastando');
-      if (!arrastou) return;
-      // Soltar depois de arrastar não pode abrir ou fechar o painel.
-      titulo.addEventListener('click', ev => ev.preventDefault(), { once: true, capture: true });
-      gravarPos({ ...lerPos(), [w.id]: [w.offsetLeft, w.offsetTop] });
-    };
-    titulo.addEventListener('pointermove', move); titulo.addEventListener('pointerup', fim); titulo.addEventListener('pointercancel', fim);
+
+
+let mapa = null, mapaPronto = false;
+// Áreas desenhadas agora, por chave H3: o HTML do popup e o centro do hexágono.
+let areasAtuais = {};
+if (window.maplibregl) {
+  // O zoom do MapLibre (blocos de 512px) fica um nível abaixo do Leaflet para a mesma escala.
+  mapa = new maplibregl.Map({
+    container: 'mapa', style: 'https://tiles.openfreemap.org/styles/positron',
+    center: [-46.63, -23.55], zoom: 11, maxZoom: 18, // São Paulo
+    // Sem zoom por duplo clique: cliques seguidos são relatos, não zoom. Sem rotação: o norte fica sempre para cima.
+    doubleClickZoom: false, dragRotate: false, pitchWithRotate: false, touchPitch: false,
   });
-}
-$('reorganizar').addEventListener('click', () => { gravarPos({}); posicionar({}); });
-
-
-let mapa = null;
-const marcAlertas = {}, marcEstacoes = {};
-if (window.L) {
-  // Sem zoom por duplo clique: cliques seguidos são relatos, não zoom.
-  mapa = L.map('mapa', { zoomControl: false, doubleClickZoom: false }).setView([-22.51, -43.18], 12); // Petrópolis
-  L.control.zoom({ position: 'bottomright' }).addTo(mapa);
-  // Os popups abrem fora do cabeçalho e da barra de relato.
-  L.Popup.prototype.options.autoPanPaddingTopLeft = L.point(20, 80);
-  L.Popup.prototype.options.autoPanPaddingBottomRight = L.point(60, 110);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18, attribution: '&copy; OpenStreetMap'
-  }).addTo(mapa);
+  mapa.touchZoomRotate.disableRotation();
+  mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
   mapa.on('click', e => htmx.ajax('POST', '/painel/relatos', { source: '#mapa', swap: 'none', values: {
-    autor_id: $('simular').checked ? novoAutor() : autorFixo, tipo: $('tipo').value, lat: e.latlng.lat, lng: e.latlng.lng,
+    autor_id: $('simular').checked ? novoAutor() : autorFixo, tipo: $('tipo').value, lat: e.lngLat.lat, lng: e.lngLat.lng,
   }}));
 } else {
-  $('mapa').innerHTML = '<p class="vazio" style="padding:12px;text-align:center;margin-top:45vh">Mapa indisponível (sem internet para carregar o Leaflet).</p>';
+  $('mapa').innerHTML = '<p class="vazio" style="padding:12px;text-align:center;margin-top:45vh">Mapa indisponível (sem internet para carregar o MapLibre).</p>';
+}
+
+// Mostra uma mensagem no #aviso. Troca o elemento para a animação recomeçar.
+function avisar(texto) {
+  const novo = document.createElement('div');
+  novo.id = 'aviso'; novo.className = 'mostrar'; novo.textContent = texto;
+  $('aviso').replaceWith(novo);
+}
+
+// Localização do usuário: ao abrir o painel, o navegador pede permissão e, se
+// concedida, o mapa vai até onde a pessoa está. O botão de localização pede de novo.
+// O navegador só libera o GPS em HTTPS ou em localhost.
+if (mapa) {
+  const gps = new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true }, fitBoundsOptions: { maxZoom: 14 }, showAccuracyCircle: true,
+  });
+  mapa.addControl(gps, 'bottom-right');
+  // O primeiro pedido é automático: só os erros depois dele, quando o usuário
+  // clicou no botão, viram aviso, para não incomodar quem recusou a permissão.
+  let automatico = true;
+  gps.on('geolocate', () => { automatico = false; });
+  gps.on('error', e => {
+    if (automatico) { automatico = false; return; }
+    avisar(!window.isSecureContext ? 'A localização só funciona com o painel aberto em HTTPS ou em localhost.'
+      : e.code === 1 ? 'Permissão de localização negada. Libere nas configurações do navegador para usar a localização.'
+      : 'Não foi possível obter sua localização.');
+  });
+  mapa.on('load', () => gps.trigger());
 }
 
 // Resolução H3 desenhada em cada zoom: de perto, um hexágono por alerta (a
 // resolução 9 do ID); de longe, os alertas vizinhos se juntam no hexágono pai.
 // É só apresentação: os alertas continuam sendo os da resolução 9.
-const resolucaoDoZoom = z => z >= 14 ? 9 : z >= 12 ? 8 : z >= 10 ? 7 : 6;
+const resolucaoDoZoom = z => z >= 13 ? 9 : z >= 11 ? 8 : z >= 9 ? 7 : 6;
 const ordemNivel = { INFO: 0, ATENCAO: 1, EMERGENCIA: 2 };
 
-// desenharMapa sincroniza os marcadores com #dados-mapa, que o servidor
+// O servidor manda os contornos em [lat, lng]; o GeoJSON quer [lng, lat] e o anel fechado.
+const anelGeoJSON = contorno => { const a = contorno.map(([lat, lng]) => [lng, lat]); return [...a, a[0]]; };
+const poligono = (anel, props) => ({ type: 'Feature', properties: props, geometry: { type: 'Polygon', coordinates: [anel] } });
+const colecao = features => ({ type: 'FeatureCollection', features });
+const centro = anel => {
+  const lngs = anel.map(p => p[0]), lats = anel.map(p => p[1]);
+  return [(Math.min(...lngs) + Math.max(...lngs)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
+};
+
+// Camadas do mapa: hexágonos dos alertas, o hexágono tracejado sob o mouse e os
+// pluviômetros. As cores e opacidades vêm das propriedades de cada feição; o
+// destaque do hexágono sob o mouse é um feature-state.
+if (mapa) mapa.on('load', () => {
+  mapa.addSource('alertas', { type: 'geojson', data: colecao([]), promoteId: 'chave' });
+  mapa.addSource('fantasma', { type: 'geojson', data: colecao([]) });
+  mapa.addSource('estacoes', { type: 'geojson', data: colecao([]) });
+  const realcado = ['boolean', ['feature-state', 'realce'], false];
+  mapa.addLayer({ id: 'alertas-area', type: 'fill', source: 'alertas', paint: {
+    'fill-color': ['get', 'cor'], 'fill-opacity': ['case', realcado, ['+', ['get', 'opArea'], 0.2], ['get', 'opArea']] } });
+  mapa.addLayer({ id: 'alertas-borda', type: 'line', source: 'alertas', paint: {
+    'line-color': ['get', 'cor'], 'line-width': ['case', realcado, 4, 2], 'line-opacity': ['case', realcado, 1, ['get', 'opBorda']] } });
+  mapa.addLayer({ id: 'fantasma-area', type: 'fill', source: 'fantasma', paint: { 'fill-color': '#475569', 'fill-opacity': 0.12 } });
+  mapa.addLayer({ id: 'fantasma-borda', type: 'line', source: 'fantasma', paint: { 'line-color': '#475569', 'line-width': 2, 'line-dasharray': [2.5, 2.5] } });
+  mapa.addLayer({ id: 'estacoes', type: 'circle', source: 'estacoes', paint: {
+    'circle-radius': ['get', 'raio'], 'circle-color': '#475569', 'circle-opacity': ['get', 'op'],
+    'circle-stroke-color': '#475569', 'circle-stroke-width': 1 } });
+  mapaPronto = true;
+  desenharMapa();
+});
+
+// Destaque do hexágono sob o mouse. Os cliques sobre os hexágonos continuam
+// virando relatos; o mapa só consulta qual deles está sob o ponteiro.
+// Fora dos alertas, um hexágono tracejado mostra a área que um clique ali
+// relataria, na mesma resolução em que o mapa desenha os alertas. Calculado
+// no navegador com o h3-js, igual ao servidor (alerta.ChaveDe).
+let sobMouse = null, ultimoPonto = null, celulaFantasma = null;
+function sobPonteiro() {
+  if (!mapaPronto) return;
+  const p = ultimoPonto;
+  const chave = p && mapa.queryRenderedFeatures(mapa.project(p), { layers: ['alertas-area'] })[0]?.properties.chave || null;
+  destacar(chave);
+  const celula = p && !chave && window.h3 ? h3.latLngToCell(p.lat, p.lng, resolucaoDoZoom(mapa.getZoom())) : null;
+  if (celula === celulaFantasma) return;
+  celulaFantasma = celula;
+  mapa.getSource('fantasma').setData(colecao(celula ? [poligono(h3.cellToBoundary(celula, true), {})] : []));
+}
+function destacar(chave) {
+  if (chave === sobMouse) return;
+  if (sobMouse in areasAtuais) mapa.setFeatureState({ source: 'alertas', id: sobMouse }, { realce: false });
+  sobMouse = chave;
+  if (chave) mapa.setFeatureState({ source: 'alertas', id: chave }, { realce: true });
+}
+if (mapa) {
+  mapa.on('mousemove', e => { ultimoPonto = e.lngLat; sobPonteiro(); });
+  mapa.on('mouseout', () => { ultimoPonto = null; sobPonteiro(); });
+  // Dica do pluviômetro ao passar o mouse.
+  const dica = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'dica-pluviometro', offset: 8 });
+  mapa.on('mousemove', 'estacoes', e => { const f = e.features[0]; dica.setLngLat(f.geometry.coordinates).setHTML(f.properties.html).addTo(mapa); });
+  mapa.on('mouseleave', 'estacoes', () => dica.remove());
+}
+
+// Popup de um alerta, aberto pela lista de alertas (flyTo + abrirPopup).
+let popup = null, popupChave = null, popupHtml = null;
+function abrirPopup(chave) {
+  const a = areasAtuais[chave];
+  if (!a) return;
+  popup?.remove();
+  popupChave = chave; popupHtml = a.html;
+  popup = new maplibregl.Popup({ maxWidth: '300px' }).setLngLat(a.centro).setHTML(a.html).addTo(mapa);
+  popup.on('close', () => { if (popupChave === chave) popupChave = null; });
+}
+
+// desenharMapa sincroniza as camadas com #dados-mapa, que o servidor
 // renderiza (já escapado) junto com os outros painéis.
 function desenharMapa() {
-  if (!mapa) return;
-  const res = resolucaoDoZoom(mapa.getZoom()), areas = {};
+  if (!mapaPronto) return;
+  const res = resolucaoDoZoom(mapa.getZoom()), grupos = {};
   for (const el of $('dados-mapa').querySelectorAll('[data-alerta]')) {
     const d = el.dataset, chave = res === 9 ? d.alerta : d['area' + res];
-    (areas[chave] ??= { contorno: res === 9 ? d.contorno : d['contorno' + res], els: [] }).els.push(el);
+    (grupos[chave] ??= { contorno: res === 9 ? d.contorno : d['contorno' + res], els: [] }).els.push(el);
   }
-  for (const chave in areas) {
-    const { contorno, els } = areas[chave];
+  const novas = {}, hexagonos = [];
+  for (const chave in grupos) {
+    const { contorno, els } = grupos[chave];
     // A área tem a cor do pior nível entre os alertas ativos; sem nenhum ativo, fica apagada.
     const ativos = els.filter(el => 'ativo' in el.dataset), ativo = ativos.length > 0;
     const nivel = (ativo ? ativos : els).map(el => el.dataset.nivel).reduce((x, y) => ordemNivel[y] > ordemNivel[x] ? y : x);
-    const cor = cores[nivel], estilo = { color: cor, fillColor: cor, fillOpacity: ativo ? 0.35 : 0.08, weight: 2, opacity: ativo ? 1 : 0.3 };
     const html = els.length === 1 ? els[0].innerHTML
       : `<b>${els.length} alertas nesta região</b> (${ativos.length} ${ativos.length === 1 ? 'ativo' : 'ativos'}) · aproxime o mapa para separá-los<hr>`
         + els.map(el => el.innerHTML).join('<hr>');
-    let m = marcAlertas[chave];
-    // O hexágono vem do ID, então não muda: só o estilo e o popup são atualizados.
-    // Os hexágonos não recebem cliques: um clique sobre eles tem que chegar ao mapa
-    // e virar um novo relato. O popup abre pela lista de alertas (flyTo + openPopup).
-    if (!m) { m = marcAlertas[chave] = L.polygon(JSON.parse(contorno), { ...estilo, interactive: false }).addTo(mapa).bindPopup('', { maxHeight: 320 }); }
-    m.setStyle(estilo);
-    if (m.getPopup().getContent() !== html) m.setPopupContent(html);
+    const anel = anelGeoJSON(JSON.parse(contorno));
+    novas[chave] = { html, centro: centro(anel) };
+    hexagonos.push(poligono(anel, { chave, cor: cores[nivel], opArea: ativo ? 0.35 : 0.08, opBorda: ativo ? 1 : 0.3 }));
   }
-  for (const chave in marcAlertas) if (!(chave in areas)) { mapa.removeLayer(marcAlertas[chave]); delete marcAlertas[chave]; }
+  areasAtuais = novas;
+  mapa.getSource('alertas').setData(colecao(hexagonos));
+  if (sobMouse && !(sobMouse in novas)) sobMouse = null;
+  if (popupChave) {
+    const a = novas[popupChave];
+    if (!a) popup.remove();
+    else if (a.html !== popupHtml) popup.setHTML(popupHtml = a.html);
+  }
 
+  const pontos = [];
   for (const el of $('dados-mapa').querySelectorAll('[data-sensor]')) {
     const d = el.dataset, intens = Math.min(+d.chuva / 50, 1);
-    const estilo = { radius: 3 + intens * 4, color: '#475569', weight: 1, fillColor: '#475569', fillOpacity: 0.25 + intens * 0.7 };
-    let m = marcEstacoes[d.sensor];
-    if (!m) { m = marcEstacoes[d.sensor] = L.circleMarker([+d.lat, +d.lng], estilo).addTo(mapa).bindTooltip(''); }
-    m.setStyle(estilo).setRadius(estilo.radius);
-    if (m.getTooltip().getContent() !== el.innerHTML) m.setTooltipContent(el.innerHTML);
+    pontos.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [+d.lng, +d.lat] },
+      properties: { raio: 3 + intens * 4, op: 0.25 + intens * 0.7, html: el.innerHTML } });
   }
+  mapa.getSource('estacoes').setData(colecao(pontos));
+  // Os hexágonos novos só entram no queryRenderedFeatures depois de desenhados.
+  mapa.once('idle', sobPonteiro);
 }
 desenharMapa();
 document.addEventListener('htmx:after:swap', desenharMapa);
 if (mapa) mapa.on('zoomend', desenharMapa);
 
 // Clicar num alerta da lista leva o mapa até ele e abre o popup.
-// O zoom mínimo de 15 garante que o alerta esteja no próprio hexágono, e não
+// O zoom mínimo de 14 garante que o alerta esteja no próprio hexágono, e não
 // junto com os vizinhos, quando o popup abrir.
 $('feed').addEventListener('click', e => {
   const cartao = e.target.closest('.alerta'), id = cartao && cartao.id.slice('alerta-'.length), dados = id && $('mapa-' + id);
-  if (!mapa || !dados || e.target.closest('button, details')) return;
-  mapa.once('moveend', () => marcAlertas[id]?.openPopup());
-  mapa.flyTo(L.polygon(JSON.parse(dados.dataset.contorno)).getBounds().getCenter(), Math.max(mapa.getZoom(), 15));
+  if (!mapaPronto || !dados || e.target.closest('button, details')) return;
+  mapa.once('moveend', () => { desenharMapa(); abrirPopup(id); });
+  mapa.flyTo({ center: centro(anelGeoJSON(JSON.parse(dados.dataset.contorno))), zoom: Math.max(mapa.getZoom(), 14) });
 });
 
 $('abrir-ajuda').addEventListener('click', () => $('ajuda').showModal());

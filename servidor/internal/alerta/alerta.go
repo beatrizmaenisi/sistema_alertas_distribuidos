@@ -22,8 +22,9 @@ import (
 
 const (
 	// ResolucaoCelula é a resolução da grade hexagonal H3 que agrupa relatos.
-	// Na 8, cada hexágono tem ~0,74 km² (~460 m de lado).
-	ResolucaoCelula = 8
+	// Na 9, cada hexágono tem ~0,105 km² (~174 m de lado, ~350 m de ponta a ponta):
+	// bem acima do erro de GPS do celular na cidade, que é de dezenas de metros.
+	ResolucaoCelula = 9
 	// Validade é por quanto tempo um alerta continua ativo depois do último relato.
 	Validade = 6 * time.Hour
 	// Carencia é por quanto tempo, depois de resolvido, relatos novos ainda

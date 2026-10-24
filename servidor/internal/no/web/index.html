@@ -288,9 +288,9 @@ if (window.L) {
 }
 
 // Resolução H3 desenhada em cada zoom: de perto, um hexágono por alerta (a
-// resolução 8 do ID); de longe, os alertas vizinhos se juntam no hexágono pai.
-// É só apresentação: os alertas continuam sendo os da resolução 8.
-const resolucaoDoZoom = z => z >= 12 ? 8 : z >= 10 ? 7 : 6;
+// resolução 9 do ID); de longe, os alertas vizinhos se juntam no hexágono pai.
+// É só apresentação: os alertas continuam sendo os da resolução 9.
+const resolucaoDoZoom = z => z >= 14 ? 9 : z >= 12 ? 8 : z >= 10 ? 7 : 6;
 const ordemNivel = { INFO: 0, ATENCAO: 1, EMERGENCIA: 2 };
 
 // desenharMapa sincroniza os marcadores com #dados-mapa, que o servidor
@@ -299,8 +299,8 @@ function desenharMapa() {
   if (!mapa) return;
   const res = resolucaoDoZoom(mapa.getZoom()), areas = {};
   for (const el of $('dados-mapa').querySelectorAll('[data-alerta]')) {
-    const d = el.dataset, chave = res === 8 ? d.alerta : d['area' + res];
-    (areas[chave] ??= { contorno: res === 8 ? d.contorno : d['contorno' + res], els: [] }).els.push(el);
+    const d = el.dataset, chave = res === 9 ? d.alerta : d['area' + res];
+    (areas[chave] ??= { contorno: res === 9 ? d.contorno : d['contorno' + res], els: [] }).els.push(el);
   }
   for (const chave in areas) {
     const { contorno, els } = areas[chave];
@@ -313,7 +313,9 @@ function desenharMapa() {
         + els.map(el => el.innerHTML).join('<hr>');
     let m = marcAlertas[chave];
     // O hexágono vem do ID, então não muda: só o estilo e o popup são atualizados.
-    if (!m) { m = marcAlertas[chave] = L.polygon(JSON.parse(contorno), estilo).addTo(mapa).bindPopup('', { maxHeight: 320 }); }
+    // Os hexágonos não recebem cliques: um clique sobre eles tem que chegar ao mapa
+    // e virar um novo relato. O popup abre pela lista de alertas (flyTo + openPopup).
+    if (!m) { m = marcAlertas[chave] = L.polygon(JSON.parse(contorno), { ...estilo, interactive: false }).addTo(mapa).bindPopup('', { maxHeight: 320 }); }
     m.setStyle(estilo);
     if (m.getPopup().getContent() !== html) m.setPopupContent(html);
   }
@@ -453,7 +455,7 @@ document.addEventListener('htmx:response:error', semConexao);
 {{/* Dados do mapa, lidos por desenharMapa: um elemento por alerta (com o
 conteúdo do popup) e um por pluviômetro (com o conteúdo da dica). */}}
 {{define "mapa"}}
-  {{range .Alertas}}<div id="mapa-{{.ID}}" data-alerta="{{.ID}}" data-contorno="{{json .Contorno}}"{{with area .ID 7}} data-area7="{{.ID}}" data-contorno7="{{json .Contorno}}"{{end}}{{with area .ID 6}} data-area6="{{.ID}}" data-contorno6="{{json .Contorno}}"{{end}} data-nivel="{{.Nivel}}"{{if .Ativo}} data-ativo{{end}}>
+  {{range .Alertas}}<div id="mapa-{{.ID}}" data-alerta="{{.ID}}" data-contorno="{{json .Contorno}}"{{with area .ID 8}} data-area8="{{.ID}}" data-contorno8="{{json .Contorno}}"{{end}}{{with area .ID 7}} data-area7="{{.ID}}" data-contorno7="{{json .Contorno}}"{{end}}{{with area .ID 6}} data-area6="{{.ID}}" data-contorno6="{{json .Contorno}}"{{end}} data-nivel="{{.Nivel}}"{{if .Ativo}} data-ativo{{end}}>
     <b>{{titulos .}}</b> · {{nivel .Nivel}} · credibilidade <b>{{pct .Score}}</b><br>{{situacao .}}<br>
     {{with mistura .}}<span class="pequeno">Relatos: {{.}}</span><br>{{end}}
     <span class="pequeno">{{range $i, $m := motivos .}}{{if $i}}<br>{{end}}{{$m}}{{end}}</span><br>

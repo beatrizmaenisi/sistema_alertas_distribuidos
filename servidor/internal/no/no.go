@@ -144,7 +144,7 @@ var ErrRelatoInvalido = errors.New("relato inválido")
 const ToleranciaRelogio = 5 * time.Minute
 
 // coordenadaValida é escrita com >= e <= para recusar NaN, que falha em
-// qualquer comparação (o formulário do painel aceita "NaN" via ParseFloat).
+// qualquer comparação.
 func coordenadaValida(lat, lng float64) bool {
 	return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
 }

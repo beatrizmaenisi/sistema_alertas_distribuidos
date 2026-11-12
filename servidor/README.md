@@ -92,6 +92,24 @@ Outras opções: `-tipo` (`ALAGAMENTO`, `DESLIZAMENTO`, `CHUVA_FORTE` ou `QUEDA_
 4. Executar `./bin/relato -no http://localhost:8082 -lat -22.9068 -lng -43.1729 -n 5`, que envia cinco relatos falsos em um local sem chuva. O score sobe, mas o alerta permanece em ATENCAO: sem confirmação de sensor, não atinge EMERGENCIA.
 5. Executar `docker compose stop no2`. Os demais nós passam a exibi-lo como OFFLINE; novos relatos continuam sendo aceitos pelo `no1`. Em seguida, `docker compose start no2`: o nó retorna sem estado e, em cerca de 1 s, recupera tudo, voltando a apresentar o mesmo hash.
 
+### Aplicativo móvel (PWA)
+
+O painel de cada nó é também um aplicativo web progressivo: pode ser instalado no celular, abre sem conexão e guarda os relatos feitos offline para enviá-los quando o servidor voltar a responder.
+
+| Arquivo (em `internal/no/web/`) | Papel |
+|---|---|
+| `manifest.json` e `icones/` | Nome, ícone e cores do aplicativo instalado |
+| `sw.js` | *Service worker*: busca cada arquivo na rede e, se ela falhar, usa a cópia guardada (Cache API) |
+| `js/fila.js` | Fila de relatos pendentes no aparelho (IndexedDB) |
+| `js/painel.js` | Mapa, envio de relatos (`POST /api/relatos`) e reenvio da fila |
+
+O navegador só libera *service worker* e GPS em HTTPS ou em `localhost`. Há duas formas de demonstrar:
+
+- **Simulador:** abrir `http://localhost:8081` no Chrome, pressionar F12 e ativar o modo de dispositivo (Ctrl+Shift+M). O botão **Instalar** aparece no cabeçalho.
+- **Celular Android por USB:** com a depuração USB ativada, executar `adb reverse tcp:8081 tcp:8081` e abrir `http://localhost:8081` no Chrome do celular; depois, menu → *Adicionar à tela inicial*.
+
+Para demonstrar o uso offline: ativar o modo avião (ou interromper o nó), tocar em **Relatar onde estou** e observar o aviso "1 relato aguardando conexão"; ao restabelecer a conexão, o relato é enviado com o horário original.
+
 ## Arquitetura
 
 ```
@@ -100,7 +118,7 @@ cmd/replay              reprodução de CSV do CEMADEN como sensores IoT
 cmd/relato              gerador de relatos de usuários
 internal/alerta         estado replicado e regras de merge (CRDT)
 internal/credibilidade  cálculo das features e regressão logística
-internal/no             nó: estado, gossip, API e painel (web/index.html)
+internal/no             nó: estado, gossip, API e painel/aplicativo móvel (web/)
 treino/                 exportação do modelo scikit-learn para JSON; celula.py agrupa relatos como os nós
 ```
 
@@ -178,4 +196,4 @@ O campo `datahora` é opcional; na sua ausência (por exemplo, em um sensor sem 
 - O estado é mantido apenas em memória. Um nó reiniciado volta vazio e se recupera pelo *gossip*, mas, se todos os nós caírem simultaneamente, o estado é perdido. A persistência em PostgreSQL (`../sql/schema.sql`) ainda não foi implementada.
 - Não há autenticação entre nós nem entre sensores e nós.
 - Relatos em lados opostos da borda entre duas células formam dois alertas distintos no mapa. O score de ambos permanece correto, pois a contagem de usuários considera um raio de 1 km.
-- O painel requer acesso à internet para carregar a biblioteca MapLibre e os blocos do mapa (OpenFreeMap).
+- Os blocos do mapa (OpenFreeMap) vêm da internet; sem conexão, o aplicativo mostra apenas as regiões do mapa já visitadas.

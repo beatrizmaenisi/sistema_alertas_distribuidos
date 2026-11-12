@@ -2,12 +2,10 @@ package no
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -86,35 +84,6 @@ func TestRelatoAntigoNaoTravaONo(t *testing.T) {
 	}
 	if _, err := cli.Get(srv.URL + "/api/estado"); err != nil {
 		t.Fatalf("o nó travou depois do relato antigo: %v", err)
-	}
-}
-
-// O formulário do painel lê lat/lng com ParseFloat, que aceita "NaN". Um
-// alerta com NaN não vira JSON, e isso quebraria a API e o gossip do nó.
-func TestPainelRecusaCoordenadaNaN(t *testing.T) {
-	n := Novo(Config{ID: "no1"})
-	srv := httptest.NewServer(n.Handler())
-	t.Cleanup(srv.Close)
-
-	res, err := http.PostForm(srv.URL+"/painel/relatos", url.Values{
-		"lat": {"NaN"}, "lng": {"-43.2"}, "autor_id": {"x"}, "tipo": {"ALAGAMENTO"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if as := n.Alertas(time.Now()); len(as) != 0 {
-		t.Fatalf("relato com NaN não deveria virar alerta, veio %d", len(as))
-	}
-
-	res, err = http.Get(srv.URL + "/api/estado")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
-	var estado map[string]any
-	if err := json.NewDecoder(res.Body).Decode(&estado); err != nil {
-		t.Fatalf("/api/estado deveria continuar devolvendo JSON válido: %v", err)
 	}
 }
 

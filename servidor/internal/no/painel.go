@@ -173,8 +173,11 @@ func (n *No) montarPainel() *painel {
 }
 
 func (n *No) rotasPainel(mux *http.ServeMux) {
-	js, _ := fs.Sub(arquivosWeb, "web/js")
-	mux.Handle("GET /js/", http.StripPrefix("/js/", http.FileServerFS(js)))
+	web, _ := fs.Sub(arquivosWeb, "web")
+	estaticos := http.FileServerFS(web)
+	for _, rota := range []string{"/js/", "/css/", "/icones/", "/manifest.json", "/sw.js"} {
+		mux.Handle("GET "+rota, estaticos)
+	}
 
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		renderizar(w, "pagina", n.montarPainel())
@@ -182,7 +185,6 @@ func (n *No) rotasPainel(mux *http.ServeMux) {
 	mux.HandleFunc("GET /painel", func(w http.ResponseWriter, r *http.Request) {
 		n.atualizacao(w, "")
 	})
-	mux.HandleFunc("POST /painel/relatos", n.handlePainelRelato)
 	mux.HandleFunc("POST /painel/alertas/{id}/resolver", func(w http.ResponseWriter, r *http.Request) {
 		aviso := ""
 		if err := n.MudarStatus(r.PathValue("id"), alerta.Resolvido); err != nil {
@@ -199,29 +201,6 @@ func (n *No) atualizacao(w http.ResponseWriter, aviso string) {
 	p := n.montarPainel()
 	p.Aviso = aviso
 	renderizar(w, "atualizacao", p)
-}
-
-func (n *No) handlePainelRelato(w http.ResponseWriter, r *http.Request) {
-	lat, errLat := strconv.ParseFloat(r.FormValue("lat"), 64)
-	lng, errLng := strconv.ParseFloat(r.FormValue("lng"), 64)
-	autor := r.FormValue("autor_id")
-	if errLat != nil || errLng != nil || autor == "" {
-		n.atualizacao(w, "Não foi possível enviar o relato: dados incompletos.")
-		return
-	}
-	v, err := n.AdicionarRelato(alerta.Relato{
-		Dispositivo: hashDispositivo(autor),
-		TipoAutor:   alerta.Usuario,
-		Tipo:        r.FormValue("tipo"),
-		Lat:         lat,
-		Lng:         lng,
-	})
-	if err != nil {
-		n.atualizacao(w, "Não foi possível enviar o relato: confira o tipo e o local.")
-		return
-	}
-	n.atualizacao(w, fmt.Sprintf("Relato enviado! O alerta de %s nesta área está com credibilidade de %s (%s), porque %s na região.",
-		TiposRelato[v.Tipo], pct(v.Score), nomesNivelPainel[v.Nivel], relataram(v.NUsuarios)))
 }
 
 // renderizar monta a resposta inteira antes de enviar, para um erro no

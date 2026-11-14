@@ -88,7 +88,7 @@ Outras opções: `-tipo` (`ALAGAMENTO`, `DESLIZAMENTO`, `CHUVA_FORTE` ou `QUEDA_
 
 1. Abrir os três painéis lado a lado e verificar que todos exibem o mesmo **hash de estado** no topo.
 2. Executar `./bin/replay -velocidade 120`. As leituras chegam a nós diferentes, e as estações acima de 25 mm/h disparam alertas por conta própria (sensor como nó âncora). Os três painéis passam a exibir os mesmos alertas.
-3. Clicar no mapa do `no1` em uma área sem estação: surge um alerta INFO (score ≈ 0,29). Clicar próximo ao mesmo ponto no painel do `no3`: o score aumenta nos três nós (corroboração entre servidores).
+3. Clicar no mapa do `no1` em uma área sem estação: surge um alerta INFO (score ≈ 0,14 com o modelo `lr-v1`). Clicar próximo ao mesmo ponto no painel do `no3`: o score aumenta nos três nós (corroboração entre servidores).
 4. Executar `./bin/relato -no http://localhost:8082 -lat -22.9068 -lng -43.1729 -n 5`, que envia cinco relatos falsos em um local sem chuva. O score sobe, mas o alerta permanece em ATENCAO: sem confirmação de sensor, não atinge EMERGENCIA.
 5. Executar `docker compose stop no2`. Os demais nós passam a exibi-lo como OFFLINE; novos relatos continuam sendo aceitos pelo `no1`. Em seguida, `docker compose start no2`: o nó retorna sem estado e, em cerca de 1 s, recupera tudo, voltando a apresentar o mesmo hash.
 
@@ -158,7 +158,7 @@ Na ausência de modelo treinado, os nós utilizam pesos iniciais (`heuristico-v0
 1. Instalar as dependências: `pip install scikit-learn "h3>=4"`.
 2. Treinar um `Pipeline(StandardScaler, LogisticRegression)` com as colunas de `FEATURES`, na ordem definida em `treino/exportar_modelo.py`.
 3. Exportar o pipeline com `treino/exportar_modelo.py`, gerando `modelo/modelo.json`.
-4. Iniciar os nós com `-modelo modelo/modelo.json`. No Docker, descomentar a linha `MODELO` em `docker-compose.yml` e reconstruir a imagem (`docker compose up --build`), pois o diretório `modelo/` é copiado durante o build.
+4. Iniciar os nós com `-modelo modelo/modelo.json`. No Docker, a variável `MODELO` de `docker-compose.yml` já aponta para esse arquivo; após treinar de novo, reconstruir a imagem (`docker compose up --build`), pois o diretório `modelo/` é copiado durante o build.
 
 As definições das *features* estão duplicadas em `internal/credibilidade` (Go) e em `treino/exportar_modelo.py` (Python). Qualquer alteração deve ser feita nos dois locais.
 

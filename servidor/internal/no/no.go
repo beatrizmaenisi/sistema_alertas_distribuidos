@@ -389,6 +389,9 @@ type VisaoEstacao struct {
 	ChuvaMMh float64   `json:"chuva_mm_h"`
 	Momento  time.Time `json:"datahora"`
 	Leituras int       `json:"leituras"`
+
+	Temperatura *float64 `json:"temperatura_c,omitempty"`
+	Umidade     *float64 `json:"umidade_pct,omitempty"`
 }
 
 // Estacoes retorna a leitura mais recente de cada sensor.
@@ -405,6 +408,7 @@ func (n *No) Estacoes() []VisaoEstacao {
 		e.Leituras++
 		if l.Momento.After(e.Momento) {
 			e.Lat, e.Lng, e.ChuvaMMh, e.Momento = l.Lat, l.Lng, l.ChuvaMMh, l.Momento
+			e.Temperatura, e.Umidade = l.Temperatura, l.Umidade
 		}
 	}
 	es := make([]VisaoEstacao, 0, len(por))

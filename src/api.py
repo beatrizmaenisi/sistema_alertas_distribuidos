@@ -1,4 +1,4 @@
-import hashlib, hmac, os
+import hashlib, hmac, json, logging, os, urllib.request
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -11,6 +11,8 @@ load_dotenv()
 engine = create_engine(os.environ["DATABASE_URL"])
 API_KEY = os.environ["API_KEY"]
 SALT = os.environ["SALT_DISPOSITIVO"].encode()
+NOS = [u.strip().rstrip("/") for u in os.getenv("NOS_URL", "").split(",") if u.strip()]
+log = logging.getLogger("uvicorn.error")
 
 app = FastAPI(title="API de sensores")
 
@@ -27,20 +29,43 @@ class Leitura(BaseModel):
         min_length=1, max_length=64)
     temperatura: Optional[float] = Field(default=None, ge=-50, le=100)
     umidade: Optional[float] = Field(default=None, ge=0, le=100)
+    chuva_mm_h: Optional[float] = Field(default=None, ge=0, le=500)
     medido_em: Optional[datetime] = None
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)
 
     @model_validator(mode="after")
     def ao_menos_uma_medida(self):
-        if self.temperatura is None and self.umidade is None:
-            raise ValueError("envie temperatura e/ou umidade")
+        if self.temperatura is None and self.umidade is None and self.chuva_mm_h is None:
+            raise ValueError("envie temperatura, umidade e/ou chuva_mm_h")
         return self
 
 
 def _env_float(nome):
     v = os.getenv(nome)
     return float(v) if v else None
+
+
+def encaminhar(l: Leitura, quando, lat, lon):
+    """Repassa a leitura a um nó regional, que a replica aos demais por gossip."""
+    if not NOS or lat is None or lon is None:
+        return None
+    corpo = {"id_sensor": l.dispositivo_id, "lat": lat, "lng": lon,
+             "chuva_mm_h": l.chuva_mm_h or 0, "datahora": quando.isoformat()}
+    if l.temperatura is not None:
+        corpo["temperatura_c"] = l.temperatura
+    if l.umidade is not None:
+        corpo["umidade_pct"] = l.umidade
+    for no in NOS:
+        req = urllib.request.Request(
+            no + "/api/leituras", data=json.dumps(corpo).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=3):
+                return no
+        except OSError as e:
+            log.warning("nó %s não recebeu a leitura: %s", no, e)
+    return None
 
 
 @app.get("/saude")
@@ -60,9 +85,9 @@ def receber(l: Leitura):
         r = con.execute(text("""
             INSERT INTO leituras_sensor
               (dispositivo_hash, medido_em, temperatura_c, umidade_pct,
-               latitude, longitude, modelo)
-            VALUES (:h, :q, :t, :u, :la, :lo, :m)
+               chuva_mm_h, latitude, longitude, modelo)
+            VALUES (:h, :q, :t, :u, :c, :la, :lo, :m)
             ON CONFLICT (dispositivo_hash, medido_em) DO NOTHING
-        """), dict(h=h, q=quando, t=l.temperatura, u=l.umidade,
+        """), dict(h=h, q=quando, t=l.temperatura, u=l.umidade, c=l.chuva_mm_h,
                    la=lat, lo=lon, m=l.sensor))
-    return {"gravado": r.rowcount == 1}
+    return {"gravado": r.rowcount == 1, "encaminhado_para": encaminhar(l, quando, lat, lon)}

@@ -1,0 +1,19 @@
+{
+  "versao": "lr-v1",
+  "intercept": 0.4163396774251373,
+  "coef": {
+    "log_n_usuarios": 0.6879260336156965,
+    "chuva_max_mm_h": 2.407536819312701,
+    "dispersao_km": -0.4345527588923186
+  },
+  "media": {
+    "log_n_usuarios": 1.2076837750916352,
+    "chuva_max_mm_h": 6.607549999999999,
+    "dispersao_km": 0.24232093365643678
+  },
+  "escala": {
+    "log_n_usuarios": 0.4154153270520398,
+    "chuva_max_mm_h": 9.299850606192553,
+    "dispersao_km": 0.3393765184906387
+  }
+}

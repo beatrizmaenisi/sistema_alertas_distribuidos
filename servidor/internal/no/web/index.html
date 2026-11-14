@@ -140,6 +140,7 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
     {{- range .Chuvosas}}{{.Sensor}}: <b>{{num .ChuvaMMh}} mm/h</b> ({{intensidade .ChuvaMMh}})<br>{{end}}</details>
   {{- else}}{{len .Estacoes}} enviando · nenhum com chuva agora
   {{- end}}
+  {{- range .Estacoes}}{{if or .Temperatura .Umidade}}<div>{{.Sensor}}:{{with .Temperatura}} <b>{{num .}} °C</b>{{end}}{{with .Umidade}} · <b>{{num .}}%</b> de umidade{{end}} <span class="quando">{{haQuanto $.Agora .Momento}}</span></div>{{end}}{{end}}
 {{end}}
 
 {{/* Contagem no título do widget de alertas, visível mesmo com ele recolhido. */}}
@@ -197,6 +198,8 @@ conteúdo do popup) e um por pluviômetro (com o conteúdo da dica). */}}
     <span class="pequeno">{{range $i, $m := motivos .}}{{if $i}}<br>{{end}}{{$m}}{{end}}</span><br>
     <span class="pequeno">último relato {{haQuanto $.Agora .Atualizado}}</span></div>
   {{end}}
-  {{range .Estacoes}}<span id="sensor-{{.Sensor}}" data-sensor="{{.Sensor}}" data-lat="{{.Lat}}" data-lng="{{.Lng}}" data-chuva="{{.ChuvaMMh}}">Pluviômetro {{.Sensor}}: {{num .ChuvaMMh}} mm/h ({{intensidade .ChuvaMMh}})</span>
+  {{range .Estacoes}}<span id="sensor-{{.Sensor}}" data-sensor="{{.Sensor}}" data-lat="{{.Lat}}" data-lng="{{.Lng}}" data-chuva="{{.ChuvaMMh}}">
+    {{- if or .Temperatura .Umidade}}Estação {{.Sensor}}:{{with .Temperatura}} {{num .}} °C{{end}}{{with .Umidade}} · {{num .}}% de umidade{{end}}{{if .ChuvaMMh}} · {{num .ChuvaMMh}} mm/h ({{intensidade .ChuvaMMh}}){{end}}
+    {{- else}}Pluviômetro {{.Sensor}}: {{num .ChuvaMMh}} mm/h ({{intensidade .ChuvaMMh}}){{end}}</span>
   {{end}}
 {{end}}

@@ -18,6 +18,9 @@ type Leitura struct {
 	Lng      float64   `json:"lng"`
 	ChuvaMMh float64   `json:"chuva_mm_h"`
 	Momento  time.Time `json:"datahora"`
+
+	Temperatura *float64 `json:"temperatura_c,omitempty"`
+	Umidade     *float64 `json:"umidade_pct,omitempty"`
 }
 
 func (l Leitura) Chave() string {

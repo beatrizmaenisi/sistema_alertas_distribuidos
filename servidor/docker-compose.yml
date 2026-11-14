@@ -9,7 +9,7 @@ x-no: &no
   restart: "no"
   environment: &env
     PORTA: "8080"
-    # MODELO: /modelo/modelo.json   # descomentar quando o modelo treinado existir
+    MODELO: /modelo/modelo.json
 
 services:
   no1:

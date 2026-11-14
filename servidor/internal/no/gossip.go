@@ -22,13 +22,20 @@ import (
 //     tem diferente, mais a lista do que B quer de A.
 //  3. A mescla o que recebeu e envia o que B pediu (já mesclado).
 //
+// Nos passos 1 e 2 cada lado também manda a própria URL e os peers que
+// conhece, e quem recebe passa a conhecer os que não conhecia. Assim basta
+// um peer configurado para o nó descobrir o resto da rede.
+//
 // No fim da rodada A e B têm o mesmo estado. Como o merge é um CRDT, não
 // importa a ordem das rodadas nem se mensagens se repetem.
 
 type Digest struct {
 	De       string            `json:"de"`
+	URL      string            `json:"url,omitempty"`
+	Peers    []string          `json:"peers,omitempty"`
 	Alertas  map[string]string `json:"alertas"`
 	Sensores map[string]string `json:"sensores"`
+	Resumo   *Resumo           `json:"resumo,omitempty"`
 }
 
 type Pacote struct {
@@ -39,6 +46,9 @@ type Pacote struct {
 
 type RespostaSync struct {
 	Pacote
+	URL           string   `json:"url,omitempty"`
+	Peers         []string `json:"peers,omitempty"`
+	Resumo        *Resumo  `json:"resumo,omitempty"`
 	QueroAlertas  []string `json:"quero_alertas,omitempty"`
 	QueroSensores []string `json:"quero_sensores,omitempty"`
 }
@@ -54,7 +64,13 @@ func (n *No) leiturasPorSensor() map[string][]alerta.Leitura {
 func (n *No) digest() Digest {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	d := Digest{De: n.cfg.ID, Alertas: map[string]string{}, Sensores: map[string]string{}}
+	d := n.digestLocked()
+	d.Resumo = n.resumoDe(d)
+	return d
+}
+
+func (n *No) digestLocked() Digest {
+	d := Digest{De: n.cfg.ID, URL: n.cfg.URL, Peers: n.peersAtivos(), Alertas: map[string]string{}, Sensores: map[string]string{}}
 	for id, a := range n.alertas {
 		d.Alertas[id] = a.Hash()
 	}
@@ -68,7 +84,8 @@ func (n *No) digest() Digest {
 func (n *No) responderSync(d Digest) RespostaSync {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	r := RespostaSync{Pacote: Pacote{De: n.cfg.ID}}
+	r := RespostaSync{Pacote: Pacote{De: n.cfg.ID}, URL: n.cfg.URL, Peers: n.peersAtivos()}
+	r.Resumo = n.resumoDe(n.digestLocked())
 
 	for id, a := range n.alertas {
 		if h, ok := d.Alertas[id]; !ok || h != a.Hash() {
@@ -136,6 +153,8 @@ func (n *No) rodada(ctx context.Context, peer string) (string, error) {
 	if err := n.postar(ctx, peer+"/gossip/sync", n.digest(), &resp); err != nil {
 		return "", err
 	}
+	n.conhecerPeers(resp.De, append(resp.Peers, resp.URL))
+	n.anotarPeer(peer, resp.Resumo)
 	ra, rl := n.aplicar(resp.Pacote)
 
 	envio := n.pacoteCom(resp.QueroAlertas, resp.QueroSensores)
@@ -144,6 +163,7 @@ func (n *No) rodada(ctx context.Context, peer string) (string, error) {
 			return resp.De, err
 		}
 	}
+	n.convergiu(func(p *infoPeer) bool { return p.URL == peer })
 	if ra+rl+len(envio.Alertas)+len(envio.Leituras) > 0 {
 		var partes []string
 		if ra+rl > 0 {
@@ -152,7 +172,7 @@ func (n *No) rodada(ctx context.Context, peer string) (string, error) {
 		if len(envio.Alertas)+len(envio.Leituras) > 0 {
 			partes = append(partes, "enviou "+contagem(len(envio.Alertas), len(envio.Leituras)))
 		}
-		n.registrar(false, "Sincronizado com %s (gossip): %s.", resp.De, strings.Join(partes, "; "))
+		n.registrarTipo(EvGossip, false, "Sincronizado com %s (gossip): %s.", resp.De, strings.Join(partes, "; "))
 	}
 	return resp.De, nil
 }
@@ -179,6 +199,38 @@ func (n *No) postar(ctx context.Context, url string, corpo, saida any) error {
 		return nil
 	}
 	return json.NewDecoder(res.Body).Decode(saida)
+}
+
+// peersAtivos são os peers repassados aos outros no gossip: os que não estão
+// falhando agora, para um nó fora do ar não continuar se espalhando pela rede.
+// Chamar com n.mu travado.
+func (n *No) peersAtivos() []string {
+	var urls []string
+	for u, p := range n.peers {
+		if p.Falhas == 0 {
+			urls = append(urls, u)
+		}
+	}
+	return urls
+}
+
+// conhecerPeers adiciona os peers que o nó ainda não conhecia, aprendidos
+// numa rodada com o nó de.
+func (n *No) conhecerPeers(de string, urls []string) {
+	n.mu.Lock()
+	var novos []string
+	for _, u := range urls {
+		u = strings.TrimRight(u, "/")
+		if u == "" || u == n.cfg.URL || n.peers[u] != nil {
+			continue
+		}
+		n.peers[u] = &infoPeer{URL: u}
+		novos = append(novos, u)
+	}
+	n.mu.Unlock()
+	for _, u := range novos {
+		n.registrarTipo(EvDescoberta, false, "Descobriu o nó %s por meio de %s.", u, de)
+	}
 }
 
 func (n *No) escolherPeers() []string {
@@ -216,9 +268,9 @@ func (n *No) marcarPeer(url, id string, err error) {
 	// só registra as transições, para não encher o log a cada rodada
 	switch {
 	case err != nil && falhasAntes == 0:
-		n.registrar(true, "%s não respondeu; parece estar fora do ar. Os alertas continuam funcionando aqui e serão repassados quando ele voltar. [%v]", nome, err)
+		n.registrarTipo(EvFalha, true, "%s não respondeu; parece estar fora do ar. Os alertas continuam funcionando aqui e serão repassados quando ele voltar. [%v]", nome, err)
 	case err == nil && falhasAntes > 0:
-		n.registrar(false, "%s voltou a responder após %s sem sucesso e vai receber o que perdeu.", id, plural(falhasAntes, "tentativa", "tentativas"))
+		n.registrarTipo(EvVolta, false, "%s voltou a responder após %s sem sucesso e vai receber o que perdeu.", id, plural(falhasAntes, "tentativa", "tentativas"))
 	}
 }
 

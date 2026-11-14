@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -160,6 +161,9 @@ type visaoPeer struct {
 	Online   bool      `json:"online"`
 	UltimoOK time.Time `json:"ultimo_ok"`
 	Falhas   int       `json:"falhas_seguidas"`
+	Semente  bool      `json:"semente"` // vinha da configuração (PEERS), não foi descoberto
+	Resumo   *Resumo   `json:"resumo,omitempty"`
+	Visto    time.Time `json:"visto,omitempty"`
 }
 
 func (n *No) listaPeers() []visaoPeer {
@@ -168,6 +172,7 @@ func (n *No) listaPeers() []visaoPeer {
 	for _, p := range n.peers {
 		peers = append(peers, visaoPeer{
 			URL: p.URL, ID: p.ID, UltimoOK: p.UltimoOK, Falhas: p.Falhas,
+			Semente: slices.Contains(n.cfg.Peers, p.URL), Resumo: p.Resumo, Visto: p.Visto,
 			Online: !p.UltimoOK.IsZero() && p.Falhas == 0,
 		})
 	}
@@ -194,6 +199,8 @@ func (n *No) handleSync(w http.ResponseWriter, r *http.Request) {
 	if !ler(w, r, &d) {
 		return
 	}
+	n.conhecerPeers(d.De, append(d.Peers, d.URL))
+	n.anotarPeer(d.URL, d.Resumo)
 	responder(w, http.StatusOK, n.responderSync(d))
 }
 
@@ -203,8 +210,9 @@ func (n *No) handlePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a, l := n.aplicar(p)
+	n.convergiu(func(i *infoPeer) bool { return i.ID == p.De })
 	if a+l > 0 {
-		n.registrar(false, "Recebeu novidades de %s (gossip): %s.", p.De, contagem(a, l))
+		n.registrarTipo(EvGossip, false, "Recebeu novidades de %s (gossip): %s.", p.De, contagem(a, l))
 	}
 	responder(w, http.StatusOK, map[string]int{"alertas": a, "leituras": l})
 }

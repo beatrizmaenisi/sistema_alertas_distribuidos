@@ -68,6 +68,11 @@ var modelosPainel = template.Must(template.New("").Funcs(template.FuncMap{
 	"json":        func(v any) (string, error) { b, err := json.Marshal(v); return string(b), err },
 	"area":        areaMapa,
 	"add1":        func(n int) int { return n + 1 },
+	"duracao":     duracao,
+	"somar":       func(a, b float64) float64 { return a + b },
+	"icone":       iconeEvento,
+	"fatores":     fatores,
+	"regra":       regra,
 	"cartao":      func(a VisaoAlerta, agora time.Time) cartaoAlerta { return cartaoAlerta{a, agora} },
 }).ParseFS(arquivosWeb, "web/index.html"))
 
@@ -92,6 +97,7 @@ type cartaoAlerta struct {
 
 type linhaEvento struct {
 	Momento time.Time
+	Tipo    string
 	Texto   string
 	Tecnico string // identificadores no fim da mensagem, como "[alerta X]"
 	Erro    bool
@@ -115,6 +121,18 @@ type painel struct {
 	NChuvosas int
 
 	Eventos []linhaEvento // do mais recente para o mais antigo
+
+	// Visão do cluster a partir deste nó: ele mesmo e os peers que conhece.
+	Cluster      []noCluster
+	Sincronizado bool     // todos os peers online mostram o mesmo hash deste nó
+	Divergentes  []string // peers online com hash diferente (a troca ainda não terminou)
+	NAlertasTot  int      // alertas replicados neste nó, ativos ou não
+
+	// Configuração com que este nó foi iniciado.
+	Intervalo string
+	Fanout    int
+	Limiar    float64
+	Sementes  []string
 
 	Aviso string
 }
@@ -161,15 +179,59 @@ func (n *No) montarPainel() *painel {
 	p.NChuvosas = len(p.Chuvosas)
 	p.Chuvosas = p.Chuvosas[:min(8, len(p.Chuvosas))]
 
+	n.montarCluster(p)
+
 	evs := n.Eventos()
 	for i := len(evs) - 1; i >= 0; i-- {
-		l := linhaEvento{Momento: evs[i].Momento, Texto: evs[i].Texto, Erro: evs[i].Erro}
+		l := linhaEvento{Momento: evs[i].Momento, Tipo: evs[i].Tipo, Texto: evs[i].Texto, Erro: evs[i].Erro}
 		if j := strings.LastIndex(l.Texto, " ["); j >= 0 && strings.HasSuffix(l.Texto, "]") {
 			l.Texto, l.Tecnico = l.Texto[:j], l.Texto[j+2:len(l.Texto)-1]
 		}
 		p.Eventos = append(p.Eventos, l)
 	}
 	return p
+}
+
+// noCluster é um servidor no diagrama do cluster. X e Y são a posição no SVG
+// (viewBox 0 0 300 190).
+type noCluster struct {
+	ID, URL           string
+	Voce, Online      bool
+	Semente           bool // veio da configuração (PEERS); senão foi descoberto pelo gossip
+	Recente           bool // trocou dados há pouco: o link pisca
+	Hash              string
+	Igual             bool // mesmo hash que este nó
+	Alertas, Estacoes int
+	Inicio, Visto     time.Time
+	X, Y              float64
+}
+
+func (n *No) montarCluster(p *painel) {
+	d := n.digest()
+	p.NAlertasTot = len(d.Alertas)
+	p.Intervalo, p.Fanout, p.Limiar, p.Sementes = n.cfg.Intervalo.String(), n.cfg.Fanout, n.cfg.LimiarSensor, n.cfg.Peers
+	cl := []noCluster{{ID: p.No, URL: n.cfg.URL, Voce: true, Online: true, Hash: p.Hash, Igual: true,
+		Alertas: len(d.Alertas), Estacoes: len(d.Sensores), Inicio: n.inicio, Visto: p.Agora}}
+	p.Sincronizado = true
+	for _, pr := range p.Peers {
+		c := noCluster{ID: cmp.Or(pr.ID, nomeDaURL(pr.URL)), URL: pr.URL, Online: pr.Online, Semente: pr.Semente,
+			Recente: pr.Online && p.Agora.Sub(pr.UltimoOK) < 2*time.Second}
+		if r := pr.Resumo; r != nil {
+			c.Hash, c.Alertas, c.Estacoes, c.Inicio, c.Visto = r.Hash, r.Alertas, r.Estacoes, r.Inicio, pr.Visto
+			c.Igual = r.Hash == p.Hash
+		}
+		if c.Online && c.Hash != "" && !c.Igual {
+			p.Sincronizado = false
+			p.Divergentes = append(p.Divergentes, c.ID)
+		}
+		cl = append(cl, c)
+	}
+	// você no topo, os outros espalhados numa elipse
+	for i := range cl {
+		ang := -math.Pi/2 + 2*math.Pi*float64(i)/float64(len(cl))
+		cl[i].X, cl[i].Y = math.Round(150+105*math.Cos(ang)), math.Round(85+58*math.Sin(ang))
+	}
+	p.Cluster = cl
 }
 
 func (n *No) rotasPainel(mux *http.ServeMux) {
@@ -364,4 +426,76 @@ func mistura(a VisaoAlerta) string {
 		partes[i] = fmt.Sprintf("%s: %d", TiposRelato[t], a.Tipos[t])
 	}
 	return strings.Join(partes, " · ")
+}
+
+// nomeDaURL é o nome do host de uma URL ("http://no2:8080" → "no2"), usado
+// no diagrama enquanto o peer ainda não disse qual é o seu ID.
+func nomeDaURL(s string) string {
+	if u, err := url.Parse(s); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return s
+}
+
+// duracao é um intervalo curto e legível: "12 s", "5 min", "2 h 10 min".
+func duracao(agora, t time.Time) string {
+	if t.IsZero() {
+		return "?"
+	}
+	s := max(0, int(agora.Sub(t).Seconds()))
+	switch {
+	case s < 60:
+		return fmt.Sprintf("%d s", s)
+	case s < 3600:
+		return fmt.Sprintf("%d min", s/60)
+	}
+	return fmt.Sprintf("%d h %d min", s/3600, s%3600/60)
+}
+
+var iconesEvento = map[string]string{
+	EvRelato: "📝", EvSensor: "🌧️", EvGossip: "🔄", EvFalha: "⚠️", EvVolta: "✅", EvDescoberta: "🔎", EvStatus: "☑️",
+}
+
+func iconeEvento(tipo string) string { return cmp.Or(iconesEvento[tipo], "•") }
+
+// fator é uma barra da explicação do score: quanto uma evidência soma (ou
+// subtrai) ao logit. Largura em % da barra, de 0 a 100.
+type fator struct {
+	Nome, Dica string
+	Valor      float64
+	Largura    int
+	Negativo   bool
+}
+
+var nomesFator = []struct{ chave, nome, dica string }{
+	{credibilidade.FeatLogNUsuarios, "Pessoas relatando", "Quantas pessoas diferentes relataram, a até 1 km. Cada pessoa nova pesa menos que a anterior."},
+	{credibilidade.FeatChuvaMax, "Chuva medida", "A maior intensidade medida pelos pluviômetros a até 5 km."},
+	{credibilidade.FeatDispersao, "Relatos espalhados", "Distância média dos relatos ao centro. Quanto mais espalhados, menor a confiança."},
+}
+
+func fatores(a VisaoAlerta) []fator {
+	var fs []fator
+	for _, f := range nomesFator {
+		v, ok := a.Contribuicoes[f.chave]
+		if !ok {
+			continue
+		}
+		fs = append(fs, fator{Nome: f.nome, Dica: f.dica, Valor: v, Negativo: v < 0,
+			Largura: int(math.Min(math.Abs(v)/3, 1) * 100)})
+	}
+	return fs
+}
+
+// regra resume numa frase o que sustenta o score, para a plateia entender
+// porque relatos sozinhos não bastam.
+func regra(a VisaoAlerta) string {
+	switch {
+	case a.Features[credibilidade.FeatChuvaMax] > 0 && a.NUsuarios == 0:
+		return "Só os pluviômetros sustentam este alerta: nenhum morador relatou ainda."
+	case a.Features[credibilidade.FeatChuvaMax] > 0:
+		return "Moradores e pluviômetros se confirmam: a chuva medida reforça os relatos."
+	case a.NUsuarios > 1:
+		return "Só relatos de moradores: sem chuva medida por perto, falta uma confirmação independente."
+	}
+	return "Um relato isolado pesa pouco: é preciso que outras pessoas ou pluviômetros confirmem."
 }

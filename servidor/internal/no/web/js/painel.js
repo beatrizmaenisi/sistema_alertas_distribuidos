@@ -21,11 +21,14 @@ if (window.maplibregl) {
   // O zoom do MapLibre (blocos de 512px) fica um nível abaixo do Leaflet para a mesma escala.
   mapa = new maplibregl.Map({
     container: 'mapa', style: 'https://tiles.openfreemap.org/styles/positron',
-    center: [-46.63, -23.55], zoom: 11, maxZoom: 18, // São Paulo
+    center: [-43.18, -22.505], zoom: 12, maxZoom: 18, // Petrópolis, onde o replay e a demonstração acontecem
     // Sem zoom por duplo clique: cliques seguidos são relatos, não zoom. Sem rotação: o norte fica sempre para cima.
     doubleClickZoom: false, dragRotate: false, pitchWithRotate: false, touchPitch: false,
   });
   mapa.touchZoomRotate.disableRotation();
+  // O MapLibre só acompanha o resize da janela; o #mapa também muda com o dvh e o
+  // media query. Sem isso o canvas fica esticado e os hexágonos saem na escala errada.
+  new ResizeObserver(() => mapa.resize()).observe($('mapa'));
   mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
   mapa.on('click', e => relatar(e.lngLat.lat, e.lngLat.lng));
 } else {
@@ -119,23 +122,15 @@ $('relatar-aqui').addEventListener('click', () => {
     { enableHighAccuracy: true, timeout: 10000 });
 });
 
-// Localização do usuário: ao abrir o painel, o navegador pede permissão e, se
-// concedida, o mapa vai até onde a pessoa está. O botão de localização pede de novo.
+// Localização do usuário: só quando se clica no botão de localização (abrir o
+// painel não move o mapa, para a demonstração começar sempre no mesmo lugar).
 // O navegador só libera o GPS em HTTPS ou em localhost.
 if (mapa) {
   const gps = new maplibregl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true }, fitBoundsOptions: { maxZoom: 14 }, showAccuracyCircle: true,
   });
   mapa.addControl(gps, 'bottom-right');
-  // O primeiro pedido é automático: só os erros depois dele, quando o usuário
-  // clicou no botão, viram aviso, para não incomodar quem recusou a permissão.
-  let automatico = true;
-  gps.on('geolocate', () => { automatico = false; });
-  gps.on('error', e => {
-    if (automatico) { automatico = false; return; }
-    avisar(erroDeLocalizacao(e));
-  });
-  mapa.on('load', () => gps.trigger());
+  gps.on('error', e => avisar(erroDeLocalizacao(e)));
 }
 
 // Resolução H3 desenhada em cada zoom: de perto, um hexágono por alerta (a
@@ -153,33 +148,24 @@ const centro = anel => {
   return [(Math.min(...lngs) + Math.max(...lngs)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
 };
 
-// Camadas do mapa: hexágonos dos alertas (deck.gl), o hexágono tracejado sob o
-// mouse e os pluviômetros (MapLibre). Cada hexágono traz a cor e as opacidades;
-// o destaque do hexágono sob o mouse (sobMouse) aumenta o preenchimento e a borda.
-let sobreposicao = null, celulas = [];
-const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
-function desenharHexagonos() {
-  sobreposicao.setProps({ layers: [new deck.H3HexagonLayer({
-    id: 'alertas', beforeId: 'fantasma-area', data: celulas, getHexagon: d => d.h3,
-    pickable: true, filled: true, stroked: true, extruded: false, lineWidthUnits: 'pixels',
-    getFillColor: d => [...d.cor, Math.round(255 * (d.opArea + (d.chave === sobMouse ? 0.2 : 0)))],
-    getLineColor: d => [...d.cor, Math.round(255 * (d.chave === sobMouse ? 1 : d.opBorda))],
-    getLineWidth: d => d.chave === sobMouse ? 4 : 2,
-    updateTriggers: { getFillColor: sobMouse, getLineColor: sobMouse, getLineWidth: sobMouse },
-  })] });
-}
+// Camadas do mapa: hexágonos dos alertas, o hexágono tracejado sob o mouse e os
+// pluviômetros, todas do MapLibre (a sobreposição do deck.gl desalinhava os
+// hexágonos do mapa ao mover e redimensionar). As cores e opacidades vêm das
+// propriedades de cada feição; o destaque do hexágono sob o mouse é um feature-state.
 if (mapa) mapa.on('load', () => {
+  mapa.addSource('alertas', { type: 'geojson', data: colecao([]), promoteId: 'chave' });
   mapa.addSource('fantasma', { type: 'geojson', data: colecao([]) });
   mapa.addSource('estacoes', { type: 'geojson', data: colecao([]) });
+  const realcado = ['boolean', ['feature-state', 'realce'], false];
+  mapa.addLayer({ id: 'alertas-area', type: 'fill', source: 'alertas', paint: {
+    'fill-color': ['get', 'cor'], 'fill-opacity': ['case', realcado, ['+', ['get', 'opArea'], 0.2], ['get', 'opArea']] } });
+  mapa.addLayer({ id: 'alertas-borda', type: 'line', source: 'alertas', paint: {
+    'line-color': ['get', 'cor'], 'line-width': ['case', realcado, 4, 2], 'line-opacity': ['case', realcado, 1, ['get', 'opBorda']] } });
   mapa.addLayer({ id: 'fantasma-area', type: 'fill', source: 'fantasma', paint: { 'fill-color': '#475569', 'fill-opacity': 0.12 } });
   mapa.addLayer({ id: 'fantasma-borda', type: 'line', source: 'fantasma', paint: { 'line-color': '#475569', 'line-width': 2, 'line-dasharray': [2.5, 2.5] } });
   mapa.addLayer({ id: 'estacoes', type: 'circle', source: 'estacoes', paint: {
     'circle-radius': ['get', 'raio'], 'circle-color': '#475569', 'circle-opacity': ['get', 'op'],
     'circle-stroke-color': '#475569', 'circle-stroke-width': 1 } });
-  // Os hexágonos dos alertas são uma camada do deck.gl (H3HexagonLayer) intercalada
-  // com as do MapLibre, abaixo do hexágono tracejado e dos pluviômetros.
-  sobreposicao = new deck.MapboxOverlay({ interleaved: true, layers: [] });
-  mapa.addControl(sobreposicao);
   mapaPronto = true;
   desenharMapa();
 });
@@ -193,7 +179,7 @@ let sobMouse = null, ultimoPonto = null, celulaFantasma = null;
 function sobPonteiro() {
   if (!mapaPronto) return;
   const p = ultimoPonto;
-  const chave = p && sobreposicao.pickObject({ ...mapa.project(p), layerIds: ['alertas'] })?.object.chave || null;
+  const chave = p && mapa.queryRenderedFeatures(mapa.project(p), { layers: ['alertas-area'] })[0]?.properties.chave || null;
   destacar(chave);
   const celula = p && !chave && window.h3 ? h3.latLngToCell(p.lat, p.lng, resolucaoDoZoom(mapa.getZoom())) : null;
   if (celula === celulaFantasma) return;
@@ -202,8 +188,9 @@ function sobPonteiro() {
 }
 function destacar(chave) {
   if (chave === sobMouse) return;
+  if (sobMouse in areasAtuais) mapa.setFeatureState({ source: 'alertas', id: sobMouse }, { realce: false });
   sobMouse = chave;
-  desenharHexagonos();
+  if (chave) mapa.setFeatureState({ source: 'alertas', id: chave }, { realce: true });
 }
 if (mapa) {
   mapa.on('mousemove', e => { ultimoPonto = e.lngLat; sobPonteiro(); });
@@ -245,12 +232,11 @@ function desenharMapa() {
         + els.map(el => el.innerHTML).join('<hr>');
     const anel = anelGeoJSON(JSON.parse(contorno));
     novas[chave] = { html, centro: centro(anel) };
-    hexagonos.push({ chave, h3: chave.split('_')[0], cor: rgb(cores[nivel]), opArea: ativo ? 0.35 : 0.08, opBorda: ativo ? 1 : 0.3 });
+    hexagonos.push(poligono(anel, { chave, cor: cores[nivel], opArea: ativo ? 0.35 : 0.08, opBorda: ativo ? 1 : 0.3 }));
   }
   areasAtuais = novas;
-  celulas = hexagonos;
   if (sobMouse && !(sobMouse in novas)) sobMouse = null;
-  desenharHexagonos();
+  mapa.getSource('alertas').setData(colecao(hexagonos));
   if (popupChave) {
     const a = novas[popupChave];
     if (!a) popup.remove();
@@ -264,7 +250,7 @@ function desenharMapa() {
       properties: { raio: 3 + intens * 4, op: 0.25 + intens * 0.7, html: el.innerHTML } });
   }
   mapa.getSource('estacoes').setData(colecao(pontos));
-  // Os hexágonos novos só podem ser consultados (pickObject) depois de desenhados.
+  // Os hexágonos novos só podem ser consultados (queryRenderedFeatures) depois de desenhados.
   mapa.once('idle', sobPonteiro);
 }
 desenharMapa();
@@ -279,6 +265,61 @@ $('feed').addEventListener('click', e => {
   if (!mapaPronto || !dados || e.target.closest('button, details')) return;
   mapa.once('moveend', () => { desenharMapa(); abrirPopup(id); });
   mapa.flyTo({ center: centro(anelGeoJSON(JSON.parse(dados.dataset.contorno))), zoom: Math.max(mapa.getZoom(), 14) });
+});
+
+// Cenários de demonstração: mandam dados de teste para este servidor pelas
+// mesmas rotas que os aplicativos e os sensores usam (/api/relatos e /api/leituras).
+const enviar = (rota, corpo) => fetch(rota, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) })
+  .then(r => { if (!r.ok) throw new Error(rota + ': HTTP ' + r.status); });
+const deslocar = (c, metros) => {
+  const ang = Math.random() * 2 * Math.PI, d = Math.random() * metros;
+  return { lat: c.lat + d / 111000 * Math.sin(ang), lng: c.lng + d / (111000 * Math.cos(c.lat * Math.PI / 180)) * Math.cos(ang) };
+};
+const atualizarPainel = () => htmx.ajax('GET', '/painel', { source: '#mapa', swap: 'none' });
+async function cenario(qual) {
+  if (!mapaPronto) return;
+  const c = mapa.getCenter(), tipo = $('tipo').value, nomeTipo = $('tipo').selectedOptions[0].textContent.toLowerCase();
+  try {
+    if (qual === 'chuva') {
+      await enviar('/api/leituras', { id_sensor: 'demo-' + h3.latLngToCell(c.lat, c.lng, 8), lat: c.lat, lng: c.lng, chuva_mm_h: 40 });
+      avisar('Pluviômetro de teste mediu 40 mm/h no centro do mapa.');
+    } else if (qual === 'tempestade') {
+      const mm = [60, 45, 35, 30, 20, 12, 8, 3];
+      await Promise.all(mm.map((chuva, i) => {
+        const ang = i / mm.length * 2 * Math.PI, p = { lat: c.lat + 0.014 * Math.sin(ang), lng: c.lng + 0.014 * Math.cos(ang) / Math.cos(c.lat * Math.PI / 180) };
+        return enviar('/api/leituras', { id_sensor: 'tempestade-' + (i + 1), lat: p.lat, lng: p.lng, chuva_mm_h: chuva });
+      }));
+      avisar('Oito pluviômetros mediram de 3 a 60 mm/h. Os de 25 mm/h ou mais abriram alertas sozinhos.');
+    } else {
+      const n = +qual;
+      await Promise.all(Array.from({ length: n }, () => enviar('/api/relatos', { autor_id: novoAutor(), tipo, geolocalizacao: deslocar(c, 120) })));
+      avisar(n === 1 ? `Uma pessoa relatou ${nomeTipo}.` : `${n} pessoas diferentes relataram ${nomeTipo} no centro do mapa.`);
+    }
+  } catch (e) { avisar('Não foi possível enviar o cenário: ' + e.message); }
+  atualizarPainel();
+}
+for (const b of document.querySelectorAll('button.cena')) b.addEventListener('click', () => cenario(b.dataset.cena));
+for (const b of document.querySelectorAll('button.ir')) b.addEventListener('click', () => mapa?.flyTo({ center: [+b.dataset.lng, +b.dataset.lat], zoom: +b.dataset.z }));
+
+// Endereço do painel de um servidor no navegador. Os servidores "noN" publicam
+// o painel na porta 808N (docker-compose.yml e scripts/cluster.sh), no mesmo
+// host deste painel; para outros nomes não há como saber.
+function painelDe(id) {
+  const m = /^no(\d+)$/.exec(id);
+  return m ? `${location.protocol}//${location.hostname}:808${m[1]}` : null;
+}
+
+$('nos').addEventListener('click', e => {
+  const a = e.target.closest('a.abrir');
+  if (!a) return;
+  e.preventDefault();
+  const url = painelDe(a.dataset.no);
+  if (url) window.open(url, '_blank', 'noopener'); else avisar('Não sei o endereço do painel de ' + a.dataset.no + '.');
+});
+
+// Clicar num comando do roteiro copia.
+for (const c of document.querySelectorAll('code.cmd')) c.addEventListener('click', () => {
+  navigator.clipboard?.writeText(c.textContent).then(() => avisar('Comando copiado: ' + c.textContent), () => {});
 });
 
 $('abrir-ajuda').addEventListener('click', () => $('ajuda').showModal());

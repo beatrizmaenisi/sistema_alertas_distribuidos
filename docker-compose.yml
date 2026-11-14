@@ -1,6 +1,6 @@
 # Sistema completo: banco, API de ingestão dos sensores e os três servidores regionais.
 #   cp .env.example .env && docker compose up --build
-# API dos sensores: http://localhost:8000   Painéis: http://localhost:8081, :8082, :8083
+# API dos sensores: http://localhost:8000   Painéis: http://localhost:8081 a :8084
 include:
   - servidor/docker-compose.yml
 

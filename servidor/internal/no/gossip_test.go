@@ -18,6 +18,7 @@ func cluster(t *testing.T, tamanho int) ([]*No, []*httptest.Server) {
 		nos[i] = Novo(Config{ID: fmt.Sprintf("no%d", i+1)})
 		srvs[i] = httptest.NewServer(nos[i].Handler())
 		t.Cleanup(srvs[i].Close)
+		nos[i].cfg.URL = srvs[i].URL
 	}
 	for i, n := range nos {
 		var peers []string
@@ -89,6 +90,40 @@ func TestNoNovoAlcancaOsOutros(t *testing.T) {
 	rodadas([]*No{novo}, 1)
 	if novo.HashEstado() != nos[0].HashEstado() || len(novo.Alertas(time.Now())) != 3 {
 		t.Fatalf("nó novo não alcançou o estado: %d alertas", len(novo.Alertas(time.Now())))
+	}
+}
+
+// Cada nó começa conhecendo só o próximo de uma fila; o gossip espalha as
+// URLs e no fim todos conhecem todos, sem se conhecerem a si mesmos.
+func TestDescobertaDePeers(t *testing.T) {
+	nos, srvs := cluster(t, 4)
+	for i, n := range nos {
+		n.DefinirPeers([]string{srvs[(i+1)%len(srvs)].URL})
+	}
+	rodadas(nos, 3)
+	for i, n := range nos {
+		ps := n.listaPeers()
+		if len(ps) != len(nos)-1 {
+			t.Fatalf("%s conhece %d peers, esperava %d: %+v", n.cfg.ID, len(ps), len(nos)-1, ps)
+		}
+		for _, p := range ps {
+			if p.URL == srvs[i].URL {
+				t.Fatalf("%s se conhece como peer", n.cfg.ID)
+			}
+		}
+	}
+}
+
+// Um peer fora do ar não é repassado: quem ainda não o conhecia não passa a conhecê-lo.
+func TestPeerForaDoArNaoSeEspalha(t *testing.T) {
+	nos, srvs := cluster(t, 3)
+	nos[0].DefinirPeers([]string{srvs[1].URL, srvs[2].URL})
+	nos[1].DefinirPeers([]string{srvs[0].URL})
+	srvs[2].Close()
+	nos[0].marcarPeer(srvs[2].URL, "", fmt.Errorf("fora do ar"))
+	nos[1].rodadaGeral(context.Background())
+	if ps := nos[1].listaPeers(); len(ps) != 1 {
+		t.Fatalf("nos[1] não deveria ter aprendido o peer fora do ar: %+v", ps)
 	}
 }
 

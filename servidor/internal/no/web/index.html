@@ -17,7 +17,6 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
 <script src="/js/maplibre-gl.min.js"></script>
 <script src="/js/htmx.min.js"></script>
 <script src="/js/h3-js.umd.js"></script>
-<script src="/js/deck.gl.min.js"></script>
 <script type="module" src="/js/painel.js"></script>
 </head>
 <body>
@@ -26,7 +25,7 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   <header id="topo">{{template "topo" .}}</header>
   <span id="pendentes"></span>
   <button type="button" id="instalar" hidden>Instalar</button>
-  <button type="button" id="abrir-ajuda" title="Como funciona este painel?" aria-label="Como funciona este painel?">?</button>
+  <button type="button" id="abrir-ajuda" title="Como funciona este painel e roteiro da demonstração" aria-label="Como funciona este painel?">?</button>
 </nav>
 <div id="widgets">
   <details class="widget flutuante" id="w-alertas" open>
@@ -37,14 +36,15 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   </details>
   <div class="coluna">
   <details class="widget flutuante" id="w-servidores" open>
-    <summary><h2>Servidores</h2><span class="info" title="Cada servidor guarda uma cópia completa dos alertas.">ⓘ</span></summary>
+    <summary><h2>Servidores</h2><span class="info" title="Cada servidor guarda uma cópia completa dos alertas e troca novidades com os outros (gossip).">ⓘ</span></summary>
     <div class="corpo">
+      <p class="pequeno legenda-cluster">Cada círculo é um servidor. Todos guardam uma <b>cópia completa</b>; a linha pisca quando trocam dados.</p>
       <div id="nos">{{template "nos" .}}</div>
       <h3>Pluviômetros <span class="info" title="Sensores que medem a chuva, em milímetros por hora (mm/h).">ⓘ</span></h3>
       <div id="estacoes" class="pequeno">{{template "estacoes" .}}</div>
     </div>
   </details>
-  <details class="widget flutuante" id="w-atividade">
+  <details class="widget flutuante" id="w-atividade" open>
     <summary><h2>Atividade</h2><span id="ultimo">{{template "ultimo" .}}</span></summary>
     <div class="corpo">
       <div id="logs">{{template "logs" .}}</div>
@@ -54,8 +54,8 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
 </div>
 <div id="sobre">
   <div class="widget barra">
-    <div class="relatar">
-      <b>Relatar ocorrência</b>
+    <div class="grupo relatar">
+      <span class="rotulo">Relatar ocorrência</span>
       <select id="tipo" aria-label="Tipo de ocorrência">
         <option value="ALAGAMENTO">Alagamento</option><option value="DESLIZAMENTO">Deslizamento</option>
         <option value="CHUVA_FORTE">Chuva forte</option><option value="QUEDA_ARVORE">Queda de árvore</option>
@@ -64,12 +64,23 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
       <span class="dica pequeno">ou clique no local no mapa</span>
       <label title="Desmarcado, todos os cliques são seus: relatar de novo não aumenta a credibilidade. Marcado, cada clique simula uma pessoa diferente, para demonstrar vários moradores relatando.">
         <input type="checkbox" id="simular"> simular várias pessoas</label>
-      <span class="legenda" title="Informativo: credibilidade abaixo de 40%. Atenção: 40% a 69%. Emergência: 70% ou mais. Círculos cinza são pluviômetros (mais escuro = mais chuva). Cada hexágono é a área de um alerta; afastando o mapa, os vizinhos se juntam numa região maior.">
+      <span class="legenda" title="Informativo: credibilidade abaixo de 40%. Atenção: 40% a 69%. Emergência: 70% ou mais. Círculos cinza são pluviômetros (mais escuro = mais chuva; a partir de {{num .Limiar}} mm/h abrem um alerta sozinhos). Cada hexágono é a área de um alerta; afastando o mapa, os vizinhos se juntam numa região maior.">
         <span><i style="background:var(--info)"></i>Info</span>
         <span><i style="background:var(--atencao)"></i>Atenção</span>
         <span><i style="background:var(--emergencia)"></i>Emergência</span>
         <span class="info">ⓘ</span>
       </span>
+    </div>
+    <div class="grupo">
+      <span class="rotulo" title="Cada botão envia dados de teste para ESTE servidor, no centro do mapa. Observe-os chegarem aos outros.">Cenários</span>
+      <button type="button" class="cena" data-cena="1" title="Uma pessoa relata. Sozinho, um relato dá pouca credibilidade.">+1 pessoa</button>
+      <button type="button" class="cena" data-cena="5" title="Cinco pessoas diferentes relatam o mesmo lugar, do tipo escolhido acima.">+5 pessoas</button>
+      <button type="button" class="cena" data-cena="chuva" title="Um pluviômetro no centro do mapa mede 40 mm/h (acima do limite, abre alerta sozinho).">Pluviômetro 40 mm/h</button>
+      <button type="button" class="cena" data-cena="tempestade" title="Oito pluviômetros em volta do centro medem de 3 a 60 mm/h.">Tempestade</button>
+      <span class="rotulo" style="margin-left:auto">Ir para</span>
+      <button type="button" class="ir" data-lng="-43.18" data-lat="-22.505" data-z="12">Petrópolis</button>
+      <button type="button" class="ir" data-lng="-43.1729" data-lat="-22.9068" data-z="11">Rio</button>
+      <button type="button" class="ir" data-lng="-46.63" data-lat="-23.55" data-z="11">São Paulo</button>
     </div>
   </div>
 </div>
@@ -90,6 +101,18 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
     <li><b>Sem conexão:</b> os relatos ficam guardados no aparelho e são enviados sozinhos quando a conexão voltar.</li>
     <li><b>Código dos dados:</b> se for igual em todos os servidores, eles estão sincronizados.</li>
   </ul>
+  <h3>Roteiro da demonstração</h3>
+  <ol>
+    <li>Escolha o tipo e clique em <b>+5 pessoas</b>: o alerta aparece nos outros servidores em cerca de 1 s, e o código dos dados muda em todos.</li>
+    <li>Em outro lugar do mapa, <b>+5 pessoas</b> sem chuva: o alerta sobe, mas sem pluviômetro confirmando fica em Atenção.</li>
+    <li>No mesmo lugar, <b>Pluviômetro 40 mm/h</b>: a chuva medida eleva o alerta a Emergência. Veja as barras "Por que?" no cartão.</li>
+    <li>Derrube um servidor (clique para copiar): ele fica vermelho nos outros e os alertas continuam funcionando.
+      <code class="cmd">docker compose stop no2</code>
+      Traga-o de volta: ele recupera tudo em cerca de 1 s.
+      <code class="cmd">docker compose start no2</code></li>
+    <li>Com dados reais do CEMADEN (Petrópolis, 2022):
+      <code class="cmd">./bin/replay -velocidade 120</code></li>
+  </ol>
   <form method="dialog"><button>Fechar</button></form>
 </dialog>
 <div id="aviso"></div>
@@ -117,27 +140,45 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
   <span class="meta" title="Servidores que este painel enxerga: este mais os que responderam na última troca de dados.">
     <span class="ponto{{if lt .NPeersOnline (len .Peers)}} parcial{{end}}"></span>{{add1 .NPeersOnline}} de {{add1 (len .Peers)}} servidores conectados</span>
   <span class="meta" title="Resumo de todos os dados que este servidor conhece. Se o código for igual em todos os servidores, eles estão sincronizados e mostram exatamente os mesmos alertas.">
-    dados <code>{{.Hash}}</code></span>
+    dados <code>{{.Hash}}</code>{{if .Peers}}{{if .Sincronizado}}<span class="chip ok">✓ iguais em todos</span>{{else}}<span class="chip warn">⟳ sincronizando com {{juntar .Divergentes ", "}}</span>{{end}}{{end}}</span>
   <span class="meta extra" title="Versão do modelo que calcula a credibilidade de cada alerta.">modelo <code>{{.Modelo}}</code></span>
   <span class="meta extra" title="Quando este servidor foi ligado.">ligado desde {{hora .Inicio}}</span>
   <span id="conexao"></span>
 {{end}}
 
 {{define "nos"}}
-  <div class="linha-no" title="Este servidor, ligado desde {{hora .Inicio}}"><span class="ponto"></span><b>{{.No}}</b> <span class="pequeno">você</span>
-    <span class="quando">{{pl .NAtivos "alerta ativo" "alertas ativos"}}</span></div>
-  {{range .Peers}}<div id="peer-{{.URL}}" class="linha-no{{if not .Online}} offline{{end}}"
-    title="{{if .Online}}Última troca de dados {{haQuanto $.Agora .UltimoOK}}.
-      {{- else if not .UltimoOK.IsZero}}Sem resposta há {{pl .Falhas "tentativa" "tentativas"}}; recebe tudo ao voltar.
-      {{- else}}Ainda não respondeu.{{end}}"><span class="ponto"></span>{{or .ID .URL}}
-    <span class="quando">{{if .Online}}{{haQuanto $.Agora .UltimoOK}}{{else}}fora do ar{{end}}</span></div>
+  {{- $eu := index .Cluster 0}}
+  <svg class="topo-svg" viewBox="0 0 300 190" role="img" aria-label="Diagrama dos servidores e dos links de gossip">
+    {{range .Cluster}}{{if not .Voce}}<line class="link{{if .Recente}} pulso{{end}}{{if not .Online}} fora{{end}}" x1="{{$eu.X}}" y1="{{$eu.Y}}" x2="{{.X}}" y2="{{.Y}}"/>{{end}}{{end}}
+    {{range .Cluster}}<g class="{{if .Voce}}voce{{else if not .Online}}off{{else if not .Igual}}dif{{end}}" title="{{.ID}}">
+      <circle cx="{{.X}}" cy="{{.Y}}" r="20"/><text x="{{.X}}" y="{{.Y}}">{{.ID}}</text>
+      <text class="sub" x="{{.X}}" y="{{somar .Y 28.0}}">{{if not .Online}}fora do ar{{else}}{{pl .Alertas "alerta" "alertas"}}{{end}}</text></g>
+    {{end}}
+  </svg>
+  {{range .Cluster}}<div id="peer-{{.URL}}" class="no-linha{{if not .Online}} offline{{end}}" data-id="{{.ID}}" data-online="{{if .Online}}sim{{else}}nao{{end}}" data-voce="{{if .Voce}}sim{{else}}nao{{end}}"
+    title="{{if .Voce}}Este servidor, o que você está vendo.{{else if .Online}}Responde às trocas de dados.{{else}}Não responde; recebe tudo o que perdeu ao voltar.{{end}}">
+    <div class="l1"><span class="ponto"></span><b>{{.ID}}</b>
+      {{if .Voce}}<span class="tag voce">você</span>{{else if .Semente}}<span class="tag" title="Configurado de antemão (variável PEERS): este servidor já o conhecia ao iniciar.">configurado</span>{{else}}<span class="tag" title="Descoberto por gossip: outro servidor o apresentou.">descoberto</span>{{end}}
+      <span class="quando">{{if .Online}}ligado há {{duracao $.Agora .Inicio}}{{else}}fora do ar{{end}}</span></div>
+    <div class="l2 pequeno">{{.URL}}<br>
+      {{pl .Alertas "alerta replicado" "alertas replicados"}} · {{pl .Estacoes "pluviômetro" "pluviômetros"}}<br>
+      {{if .Hash}}dados <code class="hash {{if .Igual}}igual{{else}}difere{{end}}" title="{{if .Igual}}Igual ao deste servidor.{{else}}Diferente do deste servidor: a troca de dados ainda não terminou.{{end}}">{{.Hash}}</code>{{end}}
+      {{if not .Voce}} · <a href="#" class="abrir" data-no="{{.ID}}">abrir painel ↗</a>{{end}}</div>
+  </div>
   {{end}}
+  <details class="config"><summary>Configuração deste servidor</summary>
+    <dl>
+      <dt>Servidores iniciais</dt><dd>{{if .Sementes}}{{juntar .Sementes ", "}}{{else}}nenhum (aguarda ser descoberto){{end}}</dd>
+      <dt>Gossip</dt><dd>a cada {{.Intervalo}}, com {{pl .Fanout "servidor" "servidores"}} por rodada</dd>
+      <dt>Limite do pluviômetro</dt><dd>{{num .Limiar}} mm/h abre alerta sozinho</dd>
+      <dt>Modelo</dt><dd>{{.Modelo}}</dd>
+    </dl></details>
 {{end}}
 
 {{define "estacoes"}}
   {{- if not .Estacoes}}<span class="vazio">Nenhum pluviômetro enviou dados ainda.</span>
   {{- else if .Chuvosas}}<details id="det-chuvosas"><summary>{{len .Estacoes}} enviando · {{.NChuvosas}} com chuva</summary>
-    {{- range .Chuvosas}}{{.Sensor}}: <b>{{num .ChuvaMMh}} mm/h</b> ({{intensidade .ChuvaMMh}})<br>{{end}}</details>
+    {{- range .Chuvosas}}{{.Sensor}}: <b>{{num .ChuvaMMh}} mm/h</b> ({{intensidade .ChuvaMMh}}){{if ge .ChuvaMMh $.Limiar}} · <b style="color:var(--emergencia)">abriu alerta</b>{{end}}<br>{{end}}</details>
   {{- else}}{{len .Estacoes}} enviando · nenhum com chuva agora
   {{- end}}
   {{- range .Estacoes}}{{if or .Temperatura .Umidade}}<div>{{.Sensor}}:{{with .Temperatura}} <b>{{num .}} °C</b>{{end}}{{with .Umidade}} · <b>{{num .}}%</b> de umidade{{end}} <span class="quando">{{haQuanto $.Agora .Momento}}</span></div>{{end}}{{end}}
@@ -154,11 +195,14 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
       <span class="titulo"><span class="selo">{{nivel .Nivel}}</span>{{titulos .VisaoAlerta}}</span>
       <span class="credib" title="Credibilidade"><b>{{pct .Score}}</b></span>
     </div>
-    <div class="medidor"><div style="width: {{pct .Score}}"></div></div>
+    <div class="medidor" title="Marcas em 40% (Atenção) e 70% (Emergência)."><div style="width: {{pct .Score}}"></div></div>
     <p class="orientacao">{{situacao .VisaoAlerta}}</p>
+    <div class="porque"><p class="regra pequeno">{{regra .VisaoAlerta}}</p>
+      {{range fatores .VisaoAlerta}}<div class="fator" title="{{.Dica}}"><span>{{.Nome}}</span><div class="trilho"><i{{if .Negativo}} class="neg"{{end}} style="width: {{.Largura}}%"></i></div><b>{{printf "%+.1f" .Valor}}</b></div>
+      {{end}}</div>
     {{with mistura .VisaoAlerta}}<p class="pequeno mistura" title="Quantas pessoas diferentes relataram cada tipo neste alerta.">Relatos: {{.}}</p>{{end}}
     <details id="det-{{.ID}}" class="mais">
-      <summary>detalhes</summary>
+      <summary>detalhes e evidências</summary>
       <ul class="motivos pequeno">{{range motivos .VisaoAlerta}}<li>{{.}}</li>{{end}}</ul>
       {{with unicos .Comentarios}}<div class="comentarios pequeno">“{{juntar . "” · “"}}”</div>{{end}}
       <div class="rodape pequeno">
@@ -184,7 +228,7 @@ do estado. Cada painel renderiza só o conteúdo do seu contêiner. */}}
 {{define "ultimo"}}{{with .Eventos}}{{(index . 0).Texto}}{{else}}nada ainda{{end}}{{end}}
 
 {{define "logs"}}
-  {{range .Eventos}}<div{{if .Erro}} class="erro"{{end}}><span class="quando">{{hora .Momento}}</span>{{.Texto}}{{with .Tecnico}} <span class="tecnico">{{.}}</span>{{end}}</div>
+  {{range .Eventos}}<div class="ev {{.Tipo}}{{if .Erro}} erro{{end}}"><span class="quando">{{hora .Momento}}</span><span class="ic">{{icone .Tipo}}</span><span>{{.Texto}}{{with .Tecnico}} <span class="tecnico">{{.}}</span>{{end}}</span></div>
   {{else}}<span class="vazio">Nada aconteceu ainda.</span>
   {{end}}
 {{end}}

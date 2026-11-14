@@ -58,7 +58,8 @@ Cada opção pode ser definida por *flag* ou por variável de ambiente; a *flag*
 |---|---|---|---|
 | `-id` | `NO_ID` | `no1` | Identificador do nó |
 | `-porta` | `PORTA` | `8081` | Porta HTTP |
-| `-peers` | `PEERS` | vazio | URLs dos demais nós, separadas por vírgula |
+| `-url` | `URL` | `http://localhost:<porta>` | URL deste nó para os outros, anunciada no gossip |
+| `-peers` | `PEERS` | vazio | URLs de nós já conhecidos, separadas por vírgula; um basta, os outros são descobertos pelo gossip |
 | `-intervalo` | `INTERVALO_MS` | `1s` | Intervalo entre rodadas de *gossip*. A *flag* recebe uma duração (`500ms`, `2s`); a variável, um inteiro em milissegundos |
 | `-fanout` | `FANOUT` | `2` | Número de *peers* contatados por rodada |
 | `-limiar` | `LIMIAR_MM_H` | `25` | Intensidade (mm/h) a partir da qual uma estação dispara um alerta sem depender de relatos |
@@ -138,6 +139,8 @@ A cada intervalo (ou imediatamente após receber uma novidade), cada nó selecio
 1. envia um *digest* contendo o hash de cada alerta e do conjunto de leituras de cada sensor;
 2. o *peer* responde com os itens ausentes ou divergentes no remetente e solicita os que lhe faltam;
 3. o remetente realiza o merge e envia os itens solicitados.
+
+Nos passos 1 e 2 cada lado também envia a própria URL e os *peers* que conhece (exceto os que estão falhando), e quem recebe adiciona os que não conhecia. Assim um nó configurado com um único *peer* descobre o restante da rede.
 
 Ao fim da rodada, os dois nós possuem estados idênticos.
 

@@ -1,10 +1,10 @@
-const CACHE = 'alertas-v1';
+const CACHE = 'alertas-v2';
 const MAPA = 'tiles.openfreemap.org';
 const PRAZO_MS = 3000;
 const CASCA = [
   '/', '/manifest.json', '/icones/icone.svg', '/icones/icone-192.png',
   '/css/painel.css', '/css/maplibre-gl.min.css',
-  '/js/painel.js', '/js/fila.js', '/js/htmx.min.js', '/js/h3-js.umd.js', '/js/deck.gl.min.js', '/js/maplibre-gl.min.js',
+  '/js/painel.js', '/js/fila.js', '/js/htmx.min.js', '/js/h3-js.umd.js', '/js/maplibre-gl.min.js',
 ];
 
 self.addEventListener('install', e => e.waitUntil(

@@ -13,6 +13,7 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,7 +23,8 @@ import (
 
 type Config struct {
 	ID        string
-	Peers     []string // URLs base dos outros nós
+	URL       string   // URL base deste nó como os outros o alcançam; anunciada no gossip
+	Peers     []string // URLs base dos outros nós conhecidos de início; o resto é descoberto
 	Intervalo time.Duration
 	Fanout    int // quantos peers por rodada de gossip
 	Modelo    *credibilidade.Modelo
@@ -53,10 +55,26 @@ type infoPeer struct {
 	ID       string
 	UltimoOK time.Time
 	Falhas   int
+	Resumo   *Resumo // o que o peer disse sobre si na última troca; nil até a primeira
+	Visto    time.Time
 }
+
+// Tipos de evento do registro de atividade, usados pelo painel para dar um
+// ícone e uma cor a cada linha.
+const (
+	EvInfo       = "info"
+	EvRelato     = "relato"
+	EvSensor     = "sensor"
+	EvGossip     = "gossip"
+	EvFalha      = "falha"
+	EvVolta      = "volta"
+	EvDescoberta = "descoberta"
+	EvStatus     = "status"
+)
 
 type Evento struct {
 	Momento time.Time `json:"momento"`
+	Tipo    string    `json:"tipo"`
 	Texto   string    `json:"texto"`
 	Erro    bool      `json:"erro"`
 }
@@ -118,7 +136,11 @@ func (n *No) DefinirPeers(urls []string) {
 }
 
 func (n *No) registrar(erro bool, formato string, args ...any) {
-	e := Evento{Momento: time.Now(), Texto: fmt.Sprintf(formato, args...), Erro: erro}
+	n.registrarTipo(EvInfo, erro, formato, args...)
+}
+
+func (n *No) registrarTipo(tipo string, erro bool, formato string, args ...any) {
+	e := Evento{Momento: time.Now(), Tipo: tipo, Texto: fmt.Sprintf(formato, args...), Erro: erro}
 	log.Printf("[%s] %s", n.cfg.ID, e.Texto)
 	n.muEventos.Lock()
 	defer n.muEventos.Unlock()
@@ -175,7 +197,7 @@ func (n *No) AdicionarRelato(r alerta.Relato) (VisaoAlerta, error) {
 	v := n.visao(a, n.listaRelatos(), n.listaLeituras(), time.Now())
 	n.mu.Unlock()
 
-	n.registrar(false, "Relato de %s recebido de um usuário (%s…). Credibilidade do alerta agora: %.0f%% (%s). [alerta %s]",
+	n.registrarTipo(EvRelato, false, "Relato de %s recebido de um usuário (%s…). Credibilidade do alerta agora: %.0f%% (%s). [alerta %s]",
 		TiposRelato[r.Tipo], r.Dispositivo[:min(8, len(r.Dispositivo))], v.Score*100, nomesNivel[v.Nivel], v.ID)
 	n.disparar()
 	return v, nil
@@ -216,7 +238,7 @@ func (n *No) AdicionarLeitura(l alerta.Leitura) error {
 	n.mu.Unlock()
 
 	if disparou != nil {
-		n.registrar(false, "Pluviômetro %s mediu %.1f mm/h (limite: %.0f mm/h) e abriu sozinho um alerta de chuva forte. [alerta %s]",
+		n.registrarTipo(EvSensor, false, "Pluviômetro %s mediu %.1f mm/h (limite: %.0f mm/h) e abriu sozinho um alerta de chuva forte. [alerta %s]",
 			l.Sensor, l.ChuvaMMh, n.cfg.LimiarSensor, disparou.ID)
 	}
 	n.disparar()
@@ -240,7 +262,7 @@ func (n *No) MudarStatus(id string, s alerta.Status) error {
 	if !ok {
 		return fmt.Errorf("alerta %s não encontrado", id)
 	}
-	n.registrar(false, "Alerta marcado como %s; a mudança será repassada aos outros servidores. [alerta %s]", nomesStatus[s], id)
+	n.registrarTipo(EvStatus, false, "Alerta marcado como %s; a mudança será repassada aos outros servidores. [alerta %s]", nomesStatus[s], id)
 	n.disparar()
 	return nil
 }
@@ -333,6 +355,10 @@ type VisaoAlerta struct {
 	Atualizado  time.Time          `json:"atualizado_em"`
 	Expira      time.Time          `json:"expira"`
 	Hash        string             `json:"hash"`
+	// Base e Contribuicoes explicam o score: o logit parte de Base e cada
+	// feature soma ou subtrai sua contribuição.
+	Base          float64            `json:"base"`
+	Contribuicoes map[string]float64 `json:"contribuicoes"`
 }
 
 // Ativo diz se o alerta ainda vale (não foi resolvido nem expirou).
@@ -350,6 +376,7 @@ func (n *No) visao(a *alerta.Alerta, vizinhos []alerta.Relato, leituras []alerta
 		Hash: a.Hash(), Tipos: map[string]int{}, Sensores: []string{}, NosOrigem: []string{}, Comentarios: []string{},
 		NUsuarios: int(math.Round(math.Expm1(av.Features[credibilidade.FeatLogNUsuarios]))),
 	}
+	v.Base, v.Contribuicoes = n.cfg.Modelo.Contribuicoes(av.Features)
 	nos := map[string]bool{}
 	for _, r := range a.Vigentes() {
 		if r.TipoAutor == alerta.Sensor {
@@ -421,10 +448,67 @@ func (n *No) Estacoes() []VisaoEstacao {
 
 // HashEstado resume todo o estado replicado. Nós convergidos mostram o mesmo hash.
 func (n *No) HashEstado() string {
-	d := n.digest()
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return hashDigest(n.digestLocked())
+}
+
+func hashDigest(d Digest) string {
 	b, _ := json.Marshal([]map[string]string{d.Alertas, d.Sensores})
 	s := sha256.Sum256(b)
 	return hex.EncodeToString(s[:6])
+}
+
+// Resumo é o cartão de visita de um nó: o suficiente para o painel dos outros
+// nós mostrar o estado dele sem pedir nada além do gossip que já acontece.
+type Resumo struct {
+	Hash     string    `json:"hash"`
+	Alertas  int       `json:"alertas"`
+	Estacoes int       `json:"estacoes"`
+	Inicio   time.Time `json:"inicio"`
+	Modelo   string    `json:"modelo,omitempty"`
+}
+
+func (n *No) resumoDe(d Digest) *Resumo {
+	return &Resumo{Hash: hashDigest(d), Alertas: len(d.Alertas), Estacoes: len(d.Sensores),
+		Inicio: n.inicio, Modelo: n.cfg.Modelo.Versao}
+}
+
+// anotarPeer guarda o resumo que o peer mandou sobre si.
+func (n *No) anotarPeer(url string, r *Resumo) {
+	if r == nil {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if p, ok := n.peers[strings.TrimRight(url, "/")]; ok {
+		p.Resumo, p.Visto = r, time.Now()
+	}
+}
+
+// convergiu registra que, depois de uma troca completa, o peer tem o mesmo
+// estado deste nó (o resumo que ele mandou era de antes do merge).
+func (n *No) convergiu(achar func(*infoPeer) bool) {
+	d := n.digest()
+	local := n.resumoDe(d)
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, p := range n.peers {
+		if !achar(p) {
+			continue
+		}
+		r := local
+		if p.Resumo != nil {
+			c := *p.Resumo
+			c.Hash, c.Alertas, c.Estacoes = local.Hash, local.Alertas, local.Estacoes
+			r = &c
+		} else {
+			c := *local
+			c.Inicio, c.Modelo = time.Time{}, ""
+			r = &c
+		}
+		p.Resumo, p.Visto = r, time.Now()
+	}
 }
 
 func (n *No) Eventos() []Evento {

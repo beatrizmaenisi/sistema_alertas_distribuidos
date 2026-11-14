@@ -114,6 +114,73 @@ details.resolvidos > summary { cursor: pointer; color: var(--suave); font-size: 
 .maplibregl-popup-content { max-height: 320px; overflow-y: auto; font: 13px/1.45 system-ui, sans-serif; padding: 10px 14px; }
 .dica-pluviometro { pointer-events: none; }
 .dica-pluviometro .maplibregl-popup-content { padding: 4px 8px; font-size: 12px; }
+/* Cluster: diagrama dos servidores e uma linha por servidor. */
+.topo-svg { width: 100%; height: auto; display: block; margin: 2px 0 6px; }
+.topo-svg .link { stroke: #cbd2db; stroke-width: 2; }
+.topo-svg .link.fora { stroke: var(--emergencia); stroke-dasharray: 3 4; opacity: .6; }
+.topo-svg .link.pulso { stroke: var(--info); stroke-width: 3.5; animation: pulso 1.6s ease-out forwards; }
+@keyframes pulso { from { stroke-opacity: 1; } to { stroke-opacity: .25; stroke-width: 2; } }
+.topo-svg circle { fill: #fff; stroke: var(--ok); stroke-width: 3; }
+.topo-svg .voce circle { fill: var(--texto); stroke: var(--texto); }
+.topo-svg .voce text { fill: #fff; }
+.topo-svg .off circle { stroke: var(--emergencia); fill: #fef2f2; }
+.topo-svg .dif circle { stroke: var(--atencao); }
+.topo-svg text { font: 700 11px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: var(--texto); }
+.topo-svg .sub { font: 400 9px system-ui, sans-serif; fill: var(--suave); }
+.legenda-cluster { margin: 0 0 6px; }
+.no-linha { padding: 6px 0; border-top: 1px solid #eef0f3; }
+.no-linha .l1 { display: flex; align-items: center; gap: 6px; }
+.no-linha .l2 { margin: 2px 0 0 14px; line-height: 1.7; }
+.no-linha.offline .ponto { background: var(--emergencia); }
+.no-linha .quando { margin-left: auto; color: var(--suave); font-size: 12px; }
+.no-linha.offline .quando { color: var(--emergencia); font-weight: 600; }
+.tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 0 5px; border-radius: 3px; background: #e5e7eb; color: #4b5563; cursor: help; }
+.tag.voce { background: var(--texto); color: #fff; }
+.hash { font: 11px ui-monospace, monospace; padding: 0 4px; border-radius: 3px; background: #f1f3f5; }
+.hash.igual { background: #dcfce7; color: #166534; }
+.hash.difere { background: #fef3c7; color: #92400e; }
+.config { margin: 8px 0 0; font-size: 12px; color: var(--suave); }
+.config summary { cursor: pointer; }
+.config dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 6px 0 0; }
+.config dt { color: var(--suave); } .config dd { margin: 0; color: var(--texto); overflow-wrap: anywhere; }
+.chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 10px; margin-left: 6px; }
+.chip.ok { background: #14532d; color: #bbf7d0; }
+.chip.warn { background: #78350f; color: #fde68a; }
+.topbtn { width: auto !important; border-radius: 14px !important; padding: 0 10px !important; font-weight: 600 !important; font-size: 12px; white-space: nowrap; }
+.topbtn[aria-pressed="true"] { background: #fff !important; color: var(--texto) !important; }
+
+/* Credibilidade: marcas de 40% e 70% no medidor e a explicação em barras. */
+.medidor { position: relative; }
+.medidor::before, .medidor::after { content: ''; position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; }
+.medidor::before { left: 40%; } .medidor::after { left: 70%; }
+.porque { margin: 0 0 4px; }
+.porque .regra { margin: 0 0 4px; font-style: italic; }
+.fator { display: grid; grid-template-columns: 118px 1fr 34px; align-items: center; gap: 8px; font-size: 12px; cursor: help; }
+.fator .trilho { height: 5px; background: #eef0f3; border-radius: 3px; overflow: hidden; }
+.fator i { display: block; height: 100%; background: var(--ok); border-radius: 3px; }
+.fator i.neg { background: var(--emergencia); }
+.fator b { text-align: right; font-variant-numeric: tabular-nums; color: var(--suave); font-weight: 600; }
+
+/* Atividade: uma cor e um ícone por tipo de evento. */
+#logs .ev { display: grid; grid-template-columns: auto auto 1fr; gap: 6px; border-left: 3px solid #d9dde3; padding-left: 6px; }
+#logs .ev .ic { width: 1.3em; text-align: center; }
+#logs .ev.relato { border-left-color: var(--info); } #logs .ev.sensor { border-left-color: #0891b2; }
+#logs .ev.gossip { border-left-color: var(--ok); } #logs .ev.falha { border-left-color: var(--emergencia); }
+#logs .ev.volta { border-left-color: var(--ok); } #logs .ev.status { border-left-color: var(--atencao); }
+#logs .ev.descoberta { border-left-color: #7c3aed; }
+
+/* Barra de demonstração. */
+.barra { display: flex; flex-direction: column; gap: 6px; }
+.barra .grupo { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.barra .rotulo { font-weight: 700; }
+button.cena { background: #f8fafc; }
+button.cena:hover, button.ir:hover { background: #eef2ff; border-color: var(--info); }
+button.ir { padding: 2px 8px; font-size: 12px; border-radius: 12px; }
+
+dialog#ajuda code.cmd { display: block; background: #f1f3f5; padding: 4px 8px; border-radius: 4px; margin: 3px 0; cursor: copy; font: 12px ui-monospace, monospace; }
+dialog#ajuda ol { padding-left: 20px; margin: 4px 0 0; }
+dialog#ajuda h3 { margin-top: 12px; }
+
 @media (max-width: 900px) {
   :root { --alt: 30dvh; }
   #mapa, #sobre { inset: var(--nav) 0 var(--alt) 0; }
@@ -129,3 +196,25 @@ details.resolvidos > summary { cursor: pointer; color: var(--suave); font-size: 
   #topo .extra { display: none; }
 }
 @media (max-width: 1200px) { #topo .extra { display: none; } }
+
+/* Tela cheia (desktop/touch): a coluna da direita ocupa a altura toda, acima da barra de relato.
+Servidores fica com a maior parte; se Atividade estiver recolhida, Servidores usa o espaço dela. */
+@media (min-width: 901px) {
+  #widgets { --col: calc(100dvh - var(--nav) - 24px - 84px); }
+  .coluna { max-height: var(--col); min-height: 0; }
+  #w-servidores { width: 340px; }
+  #w-atividade { width: 340px; }
+  #w-servidores .corpo { max-height: calc(var(--col) * .62 - 52px); }
+  #w-atividade .corpo { max-height: calc(var(--col) * .38 - 52px - 12px); }
+  #w-servidores:has(~ #w-atividade:not([open])) .corpo { max-height: calc(var(--col) - 52px * 2 - 12px); }
+  #w-alertas .corpo { max-height: calc(var(--col) - 52px); }
+}
+/* Alvos de toque maiores. */
+@media (pointer: coarse) {
+  details.widget > summary { padding: 14px 16px; min-height: 48px; }
+  select, button { min-height: 40px; padding: 6px 14px; }
+  .cabecalho button { min-height: 0; width: 34px; height: 34px; }
+  button.ir { min-height: 34px; }
+  .no-linha { padding: 10px 0; }
+  #w-servidores .corpo, #w-atividade .corpo, #w-alertas .corpo { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+}

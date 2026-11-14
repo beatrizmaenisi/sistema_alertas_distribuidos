@@ -104,7 +104,19 @@ func (m *Modelo) Avaliar(a *alerta.Alerta, vizinhos []alerta.Relato, leituras []
 }
 
 func (m *Modelo) Score(f map[string]float64) float64 {
-	z := m.Intercept
+	base, contrib := m.Contribuicoes(f)
+	z := base
+	for _, nome := range NomesFeatures {
+		z += contrib[nome]
+	}
+	return 1 / (1 + math.Exp(-z))
+}
+
+// Contribuicoes decompõe o logit do score: o ponto de partida (intercepto) e
+// quanto cada feature soma (ou subtrai) a ele. É o que o painel mostra para
+// explicar por que um alerta tem o score que tem.
+func (m *Modelo) Contribuicoes(f map[string]float64) (base float64, contrib map[string]float64) {
+	contrib = map[string]float64{}
 	for _, nome := range NomesFeatures {
 		c, ok := m.Coef[nome]
 		if !ok {
@@ -117,9 +129,9 @@ func (m *Modelo) Score(f map[string]float64) float64 {
 		if s, ok := m.Escala[nome]; ok {
 			x /= s
 		}
-		z += c * x
+		contrib[nome] = c * x
 	}
-	return 1 / (1 + math.Exp(-z))
+	return m.Intercept, contrib
 }
 
 // Extrair calcula as features de um alerta. Só usa o estado replicado

@@ -39,7 +39,8 @@ func envNum(chave string, padrao float64) float64 {
 func main() {
 	id := flag.String("id", env("NO_ID", "no1"), "identificador do nó (NO_ID)")
 	porta := flag.String("porta", env("PORTA", "8081"), "porta HTTP (PORTA)")
-	peers := flag.String("peers", env("PEERS", ""), "URLs dos outros nós, separadas por vírgula (PEERS)")
+	url := flag.String("url", env("URL", ""), "URL deste nó para os outros, ex. http://no1:8080; vazio usa http://localhost:<porta> (URL)")
+	peers := flag.String("peers", env("PEERS", ""), "URLs de nós já conhecidos, separadas por vírgula; os outros são descobertos pelo gossip (PEERS)")
 	intervalo := flag.Duration("intervalo", time.Duration(envNum("INTERVALO_MS", 1000))*time.Millisecond, "intervalo entre rodadas de gossip")
 	fanout := flag.Int("fanout", int(envNum("FANOUT", 2)), "peers contatados por rodada (FANOUT)")
 	limiar := flag.Float64("limiar", envNum("LIMIAR_MM_H", 25), "mm/h a partir do qual uma estação dispara alerta sozinha (LIMIAR_MM_H)")
@@ -62,8 +63,13 @@ func main() {
 		}
 	}
 
+	if *url == "" {
+		*url = "http://localhost:" + *porta
+	}
+
 	n := no.Novo(no.Config{
 		ID:           *id,
+		URL:          strings.TrimRight(*url, "/"),
 		Peers:        listaPeers,
 		Intervalo:    *intervalo,
 		Fanout:       *fanout,

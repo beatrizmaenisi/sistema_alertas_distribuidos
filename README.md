@@ -10,7 +10,7 @@ docker compose up --build
 | Serviço | Endereço | Pasta |
 |---|---|---|
 | API de ingestão dos sensores (FastAPI) | http://localhost:8000 | `src/api.py` |
-| Servidores regionais e painel (Go) | http://localhost:8081, :8082, :8083 | `servidor/` |
+| Servidores regionais e painel (Go) | http://localhost:8081 a :8084 | `servidor/` |
 | PostgreSQL (banco `alertas`) | localhost:5433 | `sql/` |
 | Firmware do ESP32 | | `Sensor/` |
 | Treinamento do modelo de credibilidade | | `servidor/treino/` |
